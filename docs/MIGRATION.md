@@ -1,7 +1,7 @@
 # Migrating from buildkit
 
 This guide is for a product that uses the C++ and CMake [buildkit](https://github.com/medaminben/buildkit)
-and moves to Rust. Bowlingbox_R is the first one. buildkit-rust does not convert C++ code or
+and moves to Rust. The first product built on it is the first one. buildkit-rust does not convert C++ code or
 CMake files: the product is rewritten in Rust, and the build, version, packaging and CI
 conventions carry over. The table below lists every buildkit feature and what replaces it, or
 why it was dropped on purpose.
@@ -88,7 +88,7 @@ why it was dropped on purpose.
 |---|---|
 | `tools/release/next_version.py`, `plan_release.py` and their tests | Copied unchanged into `tools/release/`, used by `release.yml` |
 | `tools/manual/build_manual.py`, `template.html`, `manual.css`, `manual.js` and tests | Copied into `tools/manual/` and embedded in `cargo-bk` |
-| `tools/manual/capture.sh` | **Planned (deferred, required).** Not in the first release, and required before Bowlingbox_R's first public release, so its manual has generated screenshots. It becomes `cargo bk manual capture`. See the section "Deferred, must be done" of the [design spec](../../docs/work/buildkit-rust/specs/2026-11-18-buildkit-rust-design.md#deferred-must-be-done-not-dropped). Until then, put screenshots into `docs/manual/assets/` by hand |
+| `tools/manual/capture.sh` | **Planned (deferred, required).** Not in the first release. See [Deferred](#deferred-planned-required) |
 | `tests/release_pins/check_pins.py` | `cargo bk check-pins`, in the `lint` job. It also checks the lint file copies, and buildkit-rust runs it on its own docs |
 
 ### Lint
@@ -124,3 +124,18 @@ pinned tag is a warning in CI.
 | `docs/CI_CD.md` | [CI_CD.md](CI_CD.md) |
 | `docs/MIGRATION.md` (unitpro to buildkit) | This file. The unitpro layout does not exist in buildkit-rust |
 | `docs/CONTRIBUTING.md` | `CONTRIBUTING.md` of this repository, and a generated one for every product with `--repo` |
+
+## Deferred (planned, required)
+
+Manual screenshot capture, buildkit's `tools/manual/capture.sh`, is deferred, not dropped. It is
+required and will ship before the first public release of the first product with an egui GUI,
+so that product's manual has generated screenshots.
+
+- `cargo bk manual capture` runs the product's capture command headless and writes
+  `docs/manual/assets/shots/<lang>/<name>.png`, which `![caption](shot:name)` in a page refers to.
+- The GUI template gets a capture hook that renders the window offscreen.
+- A CI input runs the capture on Linux and Windows, and the self-test covers it.
+
+Until it ships, put screenshots into `docs/manual/assets/` by hand.
+
+Tracking issue: to be linked.

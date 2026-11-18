@@ -368,3 +368,12 @@ fn own_lint_files_are_the_originals_and_give_no_drift_warning() {
         .success()
         .stderr(predicates::str::contains("differs").not());
 }
+
+#[test]
+fn docs_work_is_not_scanned() {
+    let t = tempfile::tempdir().unwrap();
+    own_repo(t.path(), "plain\n", "plain\n");
+    fs::create_dir_all(t.path().join("docs/work")).unwrap();
+    fs::write(t.path().join("docs/work/plan.md"), "--tag v9.9.9\n").unwrap();
+    cargo_bk(t.path(), &["check-pins"]).success();
+}

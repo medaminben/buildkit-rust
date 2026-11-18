@@ -123,6 +123,7 @@ fn doc_files(root: &Path) -> Vec<PathBuf> {
         .into_iter()
         .filter_map(Result::ok)
         .map(walkdir::DirEntry::into_path)
+        .filter(|p| !p.starts_with(root.join("docs/work")))
         .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "md"))
         .collect();
     let readme = root.join("README.md");
