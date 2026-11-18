@@ -27,10 +27,12 @@ fn tagged_repo_emits_version_and_rerun_lines() {
             .any(|p| p.ends_with("HEAD") && !p.contains("refs"))
     );
     assert!(
-        paths.iter().any(|p| p.ends_with("refs/heads/main")),
+        paths
+            .iter()
+            .any(|p| Path::new(p).ends_with("refs/heads/main")),
         "{paths:?}"
     );
-    assert!(paths.iter().any(|p| p.ends_with("refs/tags")));
+    assert!(paths.iter().any(|p| Path::new(p).ends_with("refs/tags")));
 }
 
 #[test]
@@ -44,7 +46,10 @@ fn linked_worktree_points_into_main_repo() {
     let paths = rerun_paths(&lines);
     let head = paths.iter().find(|p| p.ends_with("HEAD")).unwrap();
     assert!(head.contains("worktrees"), "{head}");
-    let tags = paths.iter().find(|p| p.ends_with("refs/tags")).unwrap();
+    let tags = paths
+        .iter()
+        .find(|p| Path::new(p).ends_with("refs/tags"))
+        .unwrap();
     assert!(!tags.contains("worktrees"), "{tags}");
     let main_git = fs::canonicalize(d.join(".git")).unwrap();
     assert!(
@@ -80,15 +85,26 @@ fn rerun_paths_exist_in_fresh_and_packed_repos() {
         !paths.iter().any(|p| p.ends_with("packed-refs")),
         "{paths:?}"
     );
-    assert!(paths.iter().any(|p| p.ends_with("refs/heads/main")));
+    assert!(
+        paths
+            .iter()
+            .any(|p| Path::new(p).ends_with("refs/heads/main"))
+    );
 
     git(&d, &["pack-refs", "--all"]);
     let lines = build_script_lines(&d, "0.0.0", &isolated());
     assert_all_exist(&lines);
     let paths = rerun_paths(&lines);
     assert!(paths.iter().any(|p| p.ends_with("packed-refs")));
-    assert!(paths.iter().any(|p| p.ends_with("refs/heads")), "{paths:?}");
-    assert!(!paths.iter().any(|p| p.ends_with("refs/heads/main")));
+    assert!(
+        paths.iter().any(|p| Path::new(p).ends_with("refs/heads")),
+        "{paths:?}"
+    );
+    assert!(
+        !paths
+            .iter()
+            .any(|p| Path::new(p).ends_with("refs/heads/main"))
+    );
 }
 
 #[test]
