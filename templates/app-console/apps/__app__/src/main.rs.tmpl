@@ -4,7 +4,6 @@ fn main() {
     let arg = std::env::args().nth(1);
     match arg.as_deref() {
         Some("--version") => println!("{{app}} {}", env!("BK_VERSION_FULL")),
-        Some(name) => println!("{}", Greeting::new(name)),
-        None => println!("{}", Greeting::new("world")),
+        other => println!("{}", Greeting::new(other.unwrap_or("world"))),
     }
 }

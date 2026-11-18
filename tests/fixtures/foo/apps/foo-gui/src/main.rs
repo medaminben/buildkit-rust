@@ -4,7 +4,7 @@ fn main() -> eframe::Result {
     let title = format!("Foo {}", env!("BK_VERSION_FULL"));
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title(title.clone())
+            .with_title(&title)
             .with_inner_size([480.0, 240.0]),
         ..Default::default()
     };
