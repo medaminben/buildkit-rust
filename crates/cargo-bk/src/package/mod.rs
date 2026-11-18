@@ -1,5 +1,6 @@
 //! Building installer packages.
 
+pub mod appimage;
 pub mod deb;
 pub mod inno;
 pub mod notices;

@@ -21,6 +21,7 @@ buildkit = { path = "../buildkit" }
 clap = { version = "4", features = ["derive"] }
 globset = "0.4.21"
 include_dir = "0.7.4"
+sha2 = "0.10"
 toml_edit = "0.22"
 walkdir = "2.5.0"
 

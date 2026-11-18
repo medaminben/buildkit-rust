@@ -4,7 +4,7 @@ use crate::exec::{Cmd, Runner};
 use crate::names::ProductName;
 use crate::os::Os;
 use crate::package::stage::{apply_stage, plan_stage};
-use crate::package::{Format, PackageCtx, deb, formats_for, notices};
+use crate::package::{Format, PackageCtx, appimage, deb, formats_for, notices};
 use crate::workspace::Workspace;
 use anyhow::{Result, bail};
 use buildkit::Git;
@@ -86,7 +86,8 @@ pub fn run(
     for format in formats {
         let path = match format {
             Format::Deb => deb::build_deb(&ctx, r)?,
-            Format::AppImage | Format::Inno => bail!("not implemented yet"),
+            Format::AppImage => appimage::build_appimage(&ctx, r)?,
+            Format::Inno => bail!("not implemented yet"),
         };
         writeln!(out, "{}", path.display())?;
         built.push(path);
