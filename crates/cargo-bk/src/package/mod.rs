@@ -8,9 +8,10 @@ pub mod stage;
 
 use crate::os::Os;
 use crate::workspace::PackageMeta;
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use buildkit::Version;
 use std::path::Path;
+use walkdir::WalkDir;
 
 /// What every package builder needs.
 pub struct PackageCtx<'a> {
@@ -51,4 +52,28 @@ pub fn formats_for(requested: Option<&str>, os: Os) -> Result<Vec<Format>> {
             bail!("unknown package format `{other}`; use inno, appimage, deb or all")
         }
     }
+}
+
+/// Copies every file under `src` to the same relative path under `dest`.
+///
+/// # Errors
+/// When a directory cannot be read or a file cannot be copied.
+pub fn copy_tree(src: &Path, dest: &Path) -> Result<()> {
+    for entry in WalkDir::new(src) {
+        let entry = entry?;
+        let target = dest.join(entry.path().strip_prefix(src)?);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&target)
+                .with_context(|| format!("cannot create {}", target.display()))?;
+        } else {
+            std::fs::copy(entry.path(), &target).with_context(|| {
+                format!(
+                    "cannot copy {} to {}",
+                    entry.path().display(),
+                    target.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
 }

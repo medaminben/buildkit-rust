@@ -217,6 +217,7 @@ fn modes_are_explicit() {
             & 0o777
     };
     assert_eq!(mode("usr/bin/foo-bar-gui"), 0o755);
+    assert_eq!(mode("usr/lib/foo-bar/foo-bar-gui"), 0o755);
     assert_eq!(mode("usr/share/applications/foo-bar.desktop"), 0o644);
     assert_eq!(mode("usr/share"), 0o755);
 }
@@ -267,8 +268,9 @@ fn real_deb_of_a_generated_product() {
         .unwrap();
     let list = String::from_utf8(contents.stdout).unwrap();
     println!("{list}");
-    assert!(list.contains("./usr/bin/foo-gui"));
-    assert!(list.contains("./usr/bin/foo-console"));
+    assert!(list.contains("./usr/bin/foo-gui -> ../lib/foo/foo-gui"));
+    assert!(list.contains("./usr/bin/foo-console -> ../lib/foo/foo-console"));
+    assert!(list.contains("./usr/lib/foo/THIRD_PARTY_NOTICES.txt"));
     let info = Command::new("dpkg-deb")
         .arg("--info")
         .arg(&built[0])
@@ -298,4 +300,67 @@ fn missing_lockfile_fails_before_building() {
         "Cargo.lock is missing; run cargo generate-lockfile and commit it (packages build with --locked)"
     );
     assert_eq!(r.calls().len(), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn deb_and_appimage_ship_the_whole_stage() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let mut ws = product(root, "acme/foo");
+    let mut extra = toml_edit::Array::new();
+    extra.push("**/*.dat");
+    ws.doc["workspace"]["metadata"]["bk"]["package"]["extra-files"] = toml_edit::value(extra);
+    for rel in [
+        "data/a.dat",
+        "node_modules/x/b.dat",
+        "web/node_modules/c.dat",
+    ] {
+        let p = root.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, "dat").unwrap();
+    }
+    let r = FakeRunner::new()
+        .with_output("cargo", 0, "notices body")
+        .with_output("dpkg-deb", 0, "")
+        .with_tool("appimagetool", "/opt/appimagetool")
+        .with_output("/opt/appimagetool", 0, "");
+    package::run(
+        &ws,
+        None,
+        Os::Linux,
+        &r,
+        &NoGit,
+        &mut Vec::new(),
+        &mut Vec::new(),
+    )
+    .unwrap();
+
+    let lib = root.join("build/deb-root/usr/lib/foo-bar");
+    let bin = root.join("build/appdir/usr/bin");
+    for dir in [&lib, &bin] {
+        for f in [
+            "foo-bar-gui",
+            "LICENSE",
+            "THIRD_PARTY_NOTICES.txt",
+            "data/a.dat",
+        ] {
+            assert!(dir.join(f).is_file(), "{} lacks {f}", dir.display());
+        }
+        assert!(!dir.join("node_modules").exists());
+        assert!(!dir.join("web").exists());
+    }
+    let link = root.join("build/deb-root/usr/bin/foo-bar-gui");
+    assert_eq!(
+        fs::read_link(&link).unwrap(),
+        Path::new("../lib/foo-bar/foo-bar-gui")
+    );
+    assert_eq!(
+        fs::canonicalize(&link).unwrap(),
+        fs::canonicalize(lib.join("foo-bar-gui")).unwrap()
+    );
+    assert_eq!(
+        fs::read_to_string(bin.join("THIRD_PARTY_NOTICES.txt")).unwrap(),
+        "notices body\n"
+    );
 }

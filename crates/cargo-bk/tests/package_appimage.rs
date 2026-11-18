@@ -220,5 +220,8 @@ fn real_appimage_of_a_generated_product() {
         String::from_utf8_lossy(&st.stderr)
     );
     println!("{}", String::from_utf8_lossy(&st.stdout));
-    assert!(ex.path().join("squashfs-root/usr/bin/foo-gui").is_file());
+    let bin = ex.path().join("squashfs-root/usr/bin");
+    for f in ["foo-gui", "foo-console", "THIRD_PARTY_NOTICES.txt"] {
+        assert!(bin.join(f).is_file(), "the AppImage lacks usr/bin/{f}");
+    }
 }

@@ -1,6 +1,6 @@
 //! The Debian package format.
 
-use super::PackageCtx;
+use super::{PackageCtx, copy_tree};
 use crate::exec::{Cmd, Runner};
 use crate::workspace::PackageMeta;
 use anyhow::{Context, Result, bail};
@@ -40,6 +40,9 @@ pub fn deb_control(
 
 /// Builds `<out>/<kebab>_<version>_amd64.deb` from `stage`; `meta.desktop`
 /// and `meta.icon` are read relative to the workspace `root`. The package tree is assembled in `<root>/build/deb-root`.
+/// The whole stage goes to `/usr/lib/<kebab>/`, so files sit next to the
+/// executables as in the Windows install; `/usr/bin/<app>` are relative
+/// symlinks to them.
 ///
 /// # Errors
 /// When a file is missing, a file operation fails, or `dpkg-deb` fails.
@@ -58,9 +61,12 @@ pub fn build_deb(ctx: &PackageCtx, r: &dyn Runner) -> Result<PathBuf> {
     if pkg.exists() {
         fs::remove_dir_all(&pkg).with_context(|| format!("cannot clear {}", pkg.display()))?;
     }
+    let lib = pkg.join("usr/lib").join(kebab);
+    copy_tree(stage, &lib)?;
     let bin = pkg.join("usr/bin");
+    fs::create_dir_all(&bin).with_context(|| format!("cannot create {}", bin.display()))?;
     for app in &meta.apps {
-        copy(&stage.join(app), &bin.join(app))?;
+        symlink(&format!("../lib/{kebab}/{app}"), &bin.join(app))?;
     }
     copy(
         &root.join(&meta.desktop),
@@ -92,7 +98,7 @@ pub fn build_deb(ctx: &PackageCtx, r: &dyn Runner) -> Result<PathBuf> {
         &pkg.join("DEBIAN/control"),
         deb_control(meta, kebab, maintainer, &version, size).as_bytes(),
     )?;
-    set_modes(&pkg, &meta.apps)?;
+    set_modes(&pkg, &lib, &meta.apps)?;
 
     fs::create_dir_all(out).with_context(|| format!("cannot create {}", out.display()))?;
     let deb = out.join(format!("{kebab}_{version}_amd64.deb"));
@@ -143,15 +149,29 @@ fn installed_size_kib(pkg: &Path) -> u64 {
     bytes.div_ceil(1024)
 }
 
-/// Directories 0755, binaries 0755, other files 0644. `dpkg-deb` only runs on
-/// Linux, so permissions are set on Unix only.
 #[cfg(unix)]
-fn set_modes(pkg: &Path, apps: &[String]) -> Result<()> {
+fn symlink(target: &str, link: &Path) -> Result<()> {
+    std::os::unix::fs::symlink(target, link)
+        .with_context(|| format!("cannot create the symlink {}", link.display()))
+}
+
+#[cfg(not(unix))]
+fn symlink(_target: &str, _link: &Path) -> Result<()> {
+    bail!("Debian packages are built on Linux")
+}
+
+/// Directories 0755, binaries in `lib` 0755, other files 0644; symlinks keep
+/// theirs. `dpkg-deb` only runs on Linux, so permissions are set on Unix only.
+#[cfg(unix)]
+fn set_modes(pkg: &Path, lib: &Path, apps: &[String]) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     for entry in WalkDir::new(pkg) {
         let entry = entry?;
+        if entry.file_type().is_symlink() {
+            continue;
+        }
         let mode = if entry.file_type().is_dir()
-            || entry.path().parent() == Some(&pkg.join("usr/bin"))
+            || entry.path().parent() == Some(lib)
                 && entry
                     .file_name()
                     .to_str()
@@ -168,6 +188,6 @@ fn set_modes(pkg: &Path, apps: &[String]) -> Result<()> {
 }
 
 #[cfg(not(unix))]
-fn set_modes(_pkg: &Path, _apps: &[String]) -> Result<()> {
+fn set_modes(_pkg: &Path, _lib: &Path, _apps: &[String]) -> Result<()> {
     Ok(())
 }

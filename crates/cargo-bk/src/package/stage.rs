@@ -38,6 +38,7 @@ pub fn plan_stage(ws: &Workspace, meta: &PackageMeta, os: Os) -> Result<StagePla
     Ok(StagePlan { files })
 }
 
+/// Adds the files under `root` matching `patterns`; symlinked files are skipped.
 fn extra_files(
     root: &Path,
     patterns: &[String],
@@ -67,7 +68,9 @@ fn extra_files(
         .sort_by_file_name()
         .into_iter()
         .filter_entry(|e| {
-            e.depth() != 1 || !matches!(e.file_name().to_str(), Some("build" | "target" | ".git"))
+            let name = e.file_name().to_str();
+            name != Some("node_modules")
+                && (e.depth() != 1 || !matches!(name, Some("build" | "target" | ".git")))
         });
     for entry in walker {
         let entry = entry?;

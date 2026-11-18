@@ -1,6 +1,6 @@
 //! The `AppImage` format.
 
-use super::PackageCtx;
+use super::{PackageCtx, copy_tree};
 use crate::exec::{Cmd, Runner};
 use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
@@ -15,7 +15,8 @@ pub const APPIMAGETOOL_SHA256: &str =
     "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0";
 
 /// Builds `<out>/<Display-name>-<version>-x86_64.AppImage` from `stage`. The
-/// `AppDir` is assembled in `<root>/build/appdir`. appimagetool comes from
+/// `AppDir` is assembled in `<root>/build/appdir`; the whole stage goes to
+/// `usr/bin/`, so files sit next to the executables as in the Windows install. appimagetool comes from
 /// `PATH`, else it is downloaded to `<root>/build/tools` and verified.
 ///
 /// # Errors
@@ -37,8 +38,8 @@ pub fn build_appimage(ctx: &PackageCtx, r: &dyn Runner) -> Result<PathBuf> {
     }
     let bin = appdir.join("usr/bin");
     fs::create_dir_all(&bin).with_context(|| format!("cannot create {}", bin.display()))?;
+    copy_tree(stage, &bin)?;
     for app in &meta.apps {
-        copy(&stage.join(app), &bin.join(app))?;
         make_executable(&bin.join(app))?;
     }
     copy(

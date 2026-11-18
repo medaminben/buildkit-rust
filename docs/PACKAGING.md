@@ -55,8 +55,8 @@ not touch it.
    `Cargo.lock`, because the build uses `--locked`.
 2. The install tree is staged into `build/stage/`, which is cleared first: each app's binary
    from `build/target/release`, `LICENSE` when it exists, and the files that match `extra-files`
-   (globs cannot leave the workspace root, and `build`, `target` and `.git` at the top level are
-   skipped).
+   (globs cannot leave the workspace root; `build`, `target` and `.git` at the top level,
+   `node_modules` at any depth and symlinked files are skipped).
 3. `THIRD_PARTY_NOTICES.txt` is written into the stage.
 4. Each requested format is built into `build/dist/`.
 
@@ -102,8 +102,9 @@ keeps the `releases/latest/download/<Name>_Setup.exe` link stable.
 
 ## AppImage (Linux)
 
-The command assembles `build/appdir/` with the apps in `usr/bin`, the `.desktop` file and the
-icon, and an `AppRun` link to `main-app`. It then runs `appimagetool` with
+The command assembles `build/appdir/` with the whole stage in `usr/bin` (the apps, `LICENSE`,
+`THIRD_PARTY_NOTICES.txt` and the `extra-files`), the `.desktop` file and the icon, and an
+`AppRun` link to `main-app`. It then runs `appimagetool` with
 `APPIMAGE_EXTRACT_AND_RUN=1` and `ARCH=x86_64`, so FUSE is not needed.
 
 `appimagetool` comes from `PATH`. Otherwise the command downloads version 1.9.1 to
@@ -116,7 +117,11 @@ installs the same file into `~/.local/bin`. Change them together.
 The command writes the package tree to `build/deb-root/` and runs
 `dpkg-deb --root-owner-group --build`. It does not use `cargo-deb`.
 
-- `/usr/bin/<app>` for each app in `apps`.
+- `/usr/lib/<kebab>/`: the whole stage, so the files sit next to the apps as in the Windows
+  install.
+- `/usr/bin/<app>` for each app in `apps`: a relative link to `../lib/<kebab>/<app>`. A program
+  that finds its files through `std::env::current_exe` gets the path in `/usr/lib/<kebab>/`,
+  because the link is resolved.
 - `/usr/share/applications/<kebab>.desktop` and
   `/usr/share/icons/hicolor/256x256/apps/<kebab>.png`.
 - `/usr/share/doc/<kebab>/copyright`: `LICENSE` followed by `THIRD_PARTY_NOTICES.txt`.
@@ -125,9 +130,8 @@ The command writes the package tree to `build/deb-root/` and runs
   `Description` (the display name). The maintainer is the owner part of
   `[workspace.metadata.buildkit] repo`, or the kebab name when `repo` is empty.
 
-The AppImage holds the apps, the `.desktop` file and the icon. Files matched by `extra-files`
-and `LICENSE` in the stage reach only the Windows installer, which installs the whole stage
-folder; the `.deb` adds only the licence texts above.
+All three formats ship the whole stage, with the same layout relative to the executables: the
+Windows install folder, `usr/bin/` in the AppImage and `/usr/lib/<kebab>/` in the `.deb`.
 
 ## In CI
 

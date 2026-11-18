@@ -26,7 +26,7 @@ summary: Every setting, file, label and environment variable that cargo bk reads
 | `iss` | yes | The Inno Setup script, relative to the root. |
 | `desktop` | yes | The `.desktop` file. |
 | `icon` | yes | The PNG icon. |
-| `extra-files` | no | Globs, relative to the root, of files to add to the install tree. A glob cannot leave the root. |
+| `extra-files` | no | Globs, relative to the root, of files to add to the install tree. A glob cannot leave the root. Every package puts them next to the executables. `node_modules` folders and symlinked files are skipped. |
 | `system-deps.apt` | no | Apt packages. They become the `Depends` line of the `.deb`, and the setup script and doctor check them. |
 
 ### `[workspace.dependencies]`
