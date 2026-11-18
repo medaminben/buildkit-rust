@@ -1,6 +1,7 @@
 //! `cargo bk link` and `unlink`: point a product at a local buildkit-rust checkout.
 
 use super::REPO_URL;
+use crate::pins::existing_mut;
 use crate::workspace::Workspace;
 use anyhow::{Context, Result, anyhow, bail};
 use std::path::{Path, PathBuf};
@@ -171,13 +172,8 @@ pub fn unlink(product: &Path) -> Result<bool> {
 
 /// Replaces `git`, `tag` and `path` of the inline buildkit dependency; other keys stay.
 fn set_dep(ws: &mut Workspace, edit: impl FnOnce(&mut InlineTable)) -> Result<()> {
-    let Some(item) = ws
-        .doc
-        .get_mut("workspace")
-        .and_then(|w| w.get_mut("dependencies"))
-        .and_then(|d| d.get_mut("buildkit"))
-        .filter(|i| !i.is_none())
-    else {
+    let path = ["workspace", "dependencies", "buildkit"];
+    let Some(item) = existing_mut(ws.doc.as_item_mut(), &path).filter(|i| !i.is_none()) else {
         bail!("buildkit dependency is missing from [workspace.dependencies]");
     };
     let Item::Value(Value::InlineTable(table)) = item else {

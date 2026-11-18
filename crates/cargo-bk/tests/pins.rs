@@ -483,3 +483,57 @@ fn upgrade_in_buildkit_rust_refuses_a_version_that_is_not_x_y_z() {
         "--tag v1.2.3\n"
     );
 }
+
+#[test]
+fn upgrade_in_buildkit_rust_adds_no_dependencies_table() {
+    let t = tempfile::tempdir().unwrap();
+    own_repo(t.path(), "plain\n", "plain\n");
+    let mut ws = Workspace::find(t.path()).unwrap();
+    upgrade(&mut ws, "1.3.0").unwrap();
+    let text = fs::read_to_string(t.path().join("Cargo.toml")).unwrap();
+    assert_eq!(
+        text,
+        "[workspace]\n[workspace.metadata.buildkit]\nversion = \"1.3.0\"\n"
+    );
+    assert!(!text.contains("dependencies"), "{text}");
+    assert!(!ws.doc.to_string().contains("dependencies"));
+}
+
+#[test]
+fn upgrade_without_a_git_dep_adds_none() {
+    let t = tempfile::tempdir().unwrap();
+    generated_product(t.path());
+    let manifest = t.path().join("Cargo.toml");
+    let text = fs::read_to_string(&manifest).unwrap();
+    let without = text
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("buildkit ="))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    assert_ne!(
+        text, without,
+        "the generated manifest has a buildkit dependency"
+    );
+    fs::write(&manifest, &without).unwrap();
+    let mut ws = Workspace::find(t.path()).unwrap();
+    upgrade(&mut ws, OWN).unwrap();
+    assert_eq!(fs::read_to_string(&manifest).unwrap(), without);
+    assert_eq!(ws.doc.to_string(), without);
+}
+
+#[test]
+fn missing_metadata_version_errors_and_adds_no_keys() {
+    let t = tempfile::tempdir().unwrap();
+    own_repo(t.path(), "plain\n", "plain\n");
+    let manifest = t.path().join("Cargo.toml");
+    fs::write(&manifest, "[workspace]\nmembers = []\n").unwrap();
+    let mut ws = Workspace::find(t.path()).unwrap();
+    let e = upgrade(&mut ws, "1.3.0").unwrap_err().to_string();
+    assert_eq!(e, "[workspace.metadata.buildkit] version is missing");
+    assert_eq!(ws.doc.to_string(), "[workspace]\nmembers = []\n");
+    assert_eq!(
+        fs::read_to_string(&manifest).unwrap(),
+        "[workspace]\nmembers = []\n"
+    );
+}

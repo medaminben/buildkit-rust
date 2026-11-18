@@ -353,14 +353,17 @@ fn replace_keeping_decor(old: &mut Value, mut new: Value) {
     *old = new;
 }
 
+/// The item at `path`, or `None`. Unlike `Item::get_mut`, which inserts every missing key,
+/// this never changes the document.
+pub(crate) fn existing_mut<'a>(item: &'a mut Item, path: &[&str]) -> Option<&'a mut Item> {
+    path.iter().try_fold(item, |item, key| {
+        item.as_table_like_mut().and_then(|t| t.get_mut(key))
+    })
+}
+
 fn set_metadata_version(ws: &mut Workspace, version: &str) -> Result<()> {
-    let Some(Item::Value(old)) = ws
-        .doc
-        .get_mut("workspace")
-        .and_then(|w| w.get_mut("metadata"))
-        .and_then(|m| m.get_mut("buildkit"))
-        .and_then(|b| b.get_mut("version"))
-    else {
+    let path = ["workspace", "metadata", "buildkit", "version"];
+    let Some(Item::Value(old)) = existing_mut(ws.doc.as_item_mut(), &path) else {
         bail!("[workspace.metadata.buildkit] version is missing");
     };
     replace_keeping_decor(old, Value::from(version));
@@ -368,13 +371,8 @@ fn set_metadata_version(ws: &mut Workspace, version: &str) -> Result<()> {
 }
 
 fn set_tag(ws: &mut Workspace, version: &str) {
-    let Some(Item::Value(old)) = ws
-        .doc
-        .get_mut("workspace")
-        .and_then(|w| w.get_mut("dependencies"))
-        .and_then(|d| d.get_mut("buildkit"))
-        .and_then(|b| b.get_mut("tag"))
-    else {
+    let path = ["workspace", "dependencies", "buildkit", "tag"];
+    let Some(Item::Value(old)) = existing_mut(ws.doc.as_item_mut(), &path) else {
         return;
     };
     replace_keeping_decor(old, Value::from(format!("v{version}")));
