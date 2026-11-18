@@ -35,8 +35,40 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 case "$(uname -s)" in
     MINGW* | MSYS* | CYGWIN*)
+        # -File passes arguments as literal strings, so translate each flag to the parameter
+        # name bootstrap.ps1 defines.
+        ps_args=()
+        ps_without=()
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --list) ps_args+=(-List) ;;
+                --dry-run) ps_args+=(-DryRun) ;;
+                --yes | -y) ps_args+=(-Yes) ;;
+                --minimal) ps_args+=(-Minimal) ;;
+                --with)
+                    [[ "${2:-}" == editor ]] || { echo "Unsupported group for --with: ${2:-}" >&2; exit 2; }
+                    ps_args+=(-WithEditor)
+                    shift
+                    ;;
+                --without)
+                    [[ -n "${2:-}" ]] || { echo "--without needs a group" >&2; exit 2; }
+                    ps_without+=("$2")
+                    shift
+                    ;;
+                -h | --help)
+                    sed -n '2,/^$/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
+                    exit 0
+                    ;;
+                *) echo "Unknown option: $1" >&2; exit 2 ;;
+            esac
+            shift
+        done
+        if [[ ${#ps_without[@]} -gt 0 ]]; then
+            ps_list="$(IFS=,; echo "${ps_without[*]}")"
+            ps_args+=(-Without "$ps_list")
+        fi
         echo "Windows detected: running bootstrap.ps1"
-        exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$script_dir/bootstrap.ps1")" "$@"
+        exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$script_dir/bootstrap.ps1")" "${ps_args[@]}"
         ;;
     Linux) ;;
     *)

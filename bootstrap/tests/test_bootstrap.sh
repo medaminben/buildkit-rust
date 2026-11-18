@@ -108,12 +108,36 @@ assert_lacks "$calls" '^apt-get install' "--without removes every apt group"
 run_case badgroup "" "$bootstrap" --without nonsense
 assert_rc nonzero "unknown group exits non-zero"
 
-# Git Bash hands over to bootstrap.ps1.
+# Git Bash hands over to bootstrap.ps1 with the flags translated to its parameter names.
 CALLS="$work/win.calls"
 : >"$CALLS"
 HOME="$work/win.home" PATH="$stubs:$PATH" CALLS="$CALLS" STUB_UNAME="MINGW64_NT-10.0" \
-    bash "$bootstrap" --yes >"$work/win.out" 2>&1
+    bash "$bootstrap" --dry-run --yes --without gui --with editor >"$work/win.out" 2>&1
+rc=$?
+assert_rc 0 "MINGW64_NT hand-over exits 0"
 assert_has "$CALLS" '^powershell.exe .*bootstrap\.ps1' "MINGW64_NT execs powershell.exe ... bootstrap.ps1"
+assert_has "$CALLS" ' -DryRun( |$)' "hand-over maps --dry-run to -DryRun"
+assert_has "$CALLS" ' -Yes( |$)' "hand-over maps --yes to -Yes"
+assert_has "$CALLS" ' -WithEditor( |$)' "hand-over maps --with editor to -WithEditor"
+assert_has "$CALLS" ' -Without gui( |$)' "hand-over maps --without gui to -Without gui"
+assert_lacks "$CALLS" ' --' "hand-over passes no -- flags"
+
+# Several --without groups become one comma-separated -Without.
+: >"$CALLS"
+HOME="$work/win.home" PATH="$stubs:$PATH" CALLS="$CALLS" STUB_UNAME="MINGW64_NT-10.0" \
+    bash "$bootstrap" --without gui --without node >/dev/null 2>&1
+assert_has "$CALLS" ' -Without gui,node( |$)' "hand-over joins several --without groups"
+
+# Unknown flags and other --with groups exit 2 without handing over.
+for bad_args in "--bogus" "--with gui"; do
+    : >"$CALLS"
+    # shellcheck disable=SC2086
+    HOME="$work/win.home" PATH="$stubs:$PATH" CALLS="$CALLS" STUB_UNAME="MINGW64_NT-10.0" \
+        bash "$bootstrap" $bad_args >/dev/null 2>&1
+    rc=$?
+    if [[ $rc -eq 2 ]]; then ok "hand-over rejects '$bad_args' with exit 2"; else bad "hand-over rejects '$bad_args' (rc=$rc)"; fi
+    assert_lacks "$CALLS" '^powershell.exe' "no hand-over for '$bad_args'"
+done
 
 # A path with a space works, and cargo-bk installs from that path.
 spaced="$work/dir with space"
@@ -122,8 +146,8 @@ cp "$bootstrap" "$spaced/bootstrap/bootstrap.sh"
 printf '[package]\nname = "cargo-bk"\nversion = "0.1.0"\n' >"$spaced/crates/cargo-bk/Cargo.toml"
 run_case spaced cargo-bk "$spaced/bootstrap/bootstrap.sh" --yes
 assert_rc 0 "path with a space: exits 0"
-assert_has "$calls" '^cargo install --locked --path .*dir with space/bootstrap/\.\./crates/cargo-bk$' \
-    "path with a space: cargo-bk installs from the clone"
+assert_has "$calls" '^cargo install --locked --path [^ ]*dir\\ with\\ space/bootstrap/\.\./crates/cargo-bk$' \
+    "path with a space: --path arrives as one argument"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]

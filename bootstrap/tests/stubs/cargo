@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=lib.sh source-path=SCRIPTDIR
 . "$(dirname "$0")/lib.sh"
-stub_log "cargo $*"
+stub_log "cargo$(printf ' %q' "$@")"
 stub_missing cargo && exit 127
 sub="${1:-}"
 case "$sub" in
