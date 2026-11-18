@@ -52,8 +52,11 @@ fn writes_workspace_crates_and_console_app() {
 
     let mut files = Vec::new();
     all_files(tmp.path(), &mut files);
-    // about.hbs is a handlebars template for cargo-about and keeps its braces.
-    for f in files.iter().filter(|f| !f.ends_with("about.hbs")) {
+    // about.hbs is a handlebars template for cargo-about and keeps its braces; the icon is binary.
+    for f in files
+        .iter()
+        .filter(|f| !f.ends_with("about.hbs") && !f.ends_with("icon.png"))
+    {
         let text = fs::read_to_string(f).unwrap();
         assert!(
             !text.contains("{{"),
@@ -93,6 +96,152 @@ fn refuses_a_foreign_non_empty_folder() {
             .contains("folder is not empty and is not a buildkit-rust product"),
         "{err}"
     );
+}
+
+fn with_repo(flow: Flow) -> NewArgs {
+    let mut a = args(Some("Foo"), &["core"]);
+    a.repo = Some("x/foo".to_string());
+    a.flow = flow;
+    a
+}
+
+fn app_id(dir: &Path) -> String {
+    let iss = fs::read_to_string(dir.join("installer/foo.iss")).unwrap();
+    let line = iss
+        .lines()
+        .find(|l| l.starts_with("#define MyAppId"))
+        .unwrap();
+    line.split('"').nth(1).unwrap().to_string()
+}
+
+#[test]
+fn repo_run_writes_gui_packaging_editor_hooks_setup_and_community_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    new_project(tmp.path(), &with_repo(Flow::Direct), &FakeRunner::new()).unwrap();
+    for f in [
+        "apps/foo-gui/Cargo.toml",
+        "apps/foo-gui/build.rs",
+        "apps/foo-gui/src/main.rs",
+        "apps/foo-gui/src/app.rs",
+        "installer/foo.iss",
+        "packaging/foo.desktop",
+        "packaging/icon.png",
+        "packaging/NOTICES-extra.txt",
+        ".vscode/tasks.json",
+        ".vscode/launch.json",
+        ".vscode/settings.json",
+        ".vscode/extensions.json",
+        "package.json",
+        ".husky/commit-msg",
+        ".husky/pre-commit",
+        "lint/commitlint.config.cjs",
+        ".editorconfig",
+        "scripts/setup.sh",
+        "scripts/setup.ps1",
+        "LICENSE",
+        "CONTRIBUTING.md",
+        "CODE_OF_CONDUCT.md",
+        "SECURITY.md",
+        ".github/ISSUE_TEMPLATE/bug_report.yml",
+        ".github/ISSUE_TEMPLATE/feature_request.yml",
+        ".github/ISSUE_TEMPLATE/config.yml",
+        ".github/pull_request_template.md",
+    ] {
+        assert!(tmp.path().join(f).is_file(), "missing {f}");
+    }
+    let png = fs::read(tmp.path().join("packaging/icon.png")).unwrap();
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+    let gui = fs::read_to_string(tmp.path().join("apps/foo-gui/src/main.rs")).unwrap();
+    assert!(gui.contains("BK_VERSION_FULL"));
+    let iss = fs::read_to_string(tmp.path().join("installer/foo.iss")).unwrap();
+    assert!(
+        iss.contains("; Never change this AppId: it is how upgrades find the existing install.")
+    );
+    assert!(iss.contains("foo-gui.exe"));
+    let lic = fs::read_to_string(tmp.path().join("LICENSE")).unwrap();
+    assert!(lic.contains(" x\n"), "{lic}");
+    let ext = fs::read_to_string(tmp.path().join(".vscode/extensions.json")).unwrap();
+    for e in [
+        "rust-lang.rust-analyzer",
+        "vadimcn.vscode-lldb",
+        "tamasfe.even-better-toml",
+    ] {
+        assert!(ext.contains(e));
+    }
+
+    let ws = cargo_bk::workspace::Workspace::find(tmp.path()).unwrap();
+    let meta = ws.package_meta().unwrap();
+    assert_eq!(meta.display_name, "Foo");
+    assert_eq!(meta.main_app, "foo-gui");
+    assert_eq!(meta.apps, ["foo-gui", "foo-console"]);
+    assert_eq!(meta.iss, Path::new("installer/foo.iss"));
+    assert_eq!(meta.desktop, Path::new("packaging/foo.desktop"));
+    assert_eq!(meta.icon, Path::new("packaging/icon.png"));
+    assert_eq!(meta.extra_files.len(), 0);
+    assert_eq!(meta.system_deps_apt.len(), 8);
+    assert!(meta.system_deps_apt.contains(&"libvulkan1".to_string()));
+}
+
+#[test]
+fn app_id_is_an_upper_case_guid_and_differs_per_product() {
+    let a = tempfile::tempdir().unwrap();
+    let b = tempfile::tempdir().unwrap();
+    new_project(a.path(), &with_repo(Flow::Direct), &FakeRunner::new()).unwrap();
+    new_project(b.path(), &with_repo(Flow::Direct), &FakeRunner::new()).unwrap();
+    let (ia, ib) = (app_id(a.path()), app_id(b.path()));
+    for id in [&ia, &ib] {
+        let inner = id.trim_matches(|c| c == '{' || c == '}');
+        assert_eq!(inner.len(), 36, "{id}");
+        assert!(
+            inner
+                .chars()
+                .all(|c| c == '-' || c.is_ascii_digit() || ('A'..='F').contains(&c))
+        );
+    }
+    assert_ne!(ia, ib);
+}
+
+#[test]
+fn without_repo_there_are_no_community_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    new_project(tmp.path(), &args(Some("Foo"), &[]), &FakeRunner::new()).unwrap();
+    for f in [
+        "LICENSE",
+        "CONTRIBUTING.md",
+        "CODE_OF_CONDUCT.md",
+        "SECURITY.md",
+    ] {
+        assert!(!tmp.path().join(f).exists(), "{f} should not exist");
+    }
+    assert!(!tmp.path().join(".github").exists());
+    assert!(tmp.path().join("scripts/setup.sh").is_file());
+}
+
+#[test]
+fn contributing_follows_the_flow() {
+    let beta = tempfile::tempdir().unwrap();
+    new_project(beta.path(), &with_repo(Flow::Beta), &FakeRunner::new()).unwrap();
+    let text = fs::read_to_string(beta.path().join("CONTRIBUTING.md")).unwrap();
+    assert!(text.contains("Beta"), "{text}");
+    assert!(text.contains("scripts/setup"));
+    assert!(text.contains("semver:"));
+    let direct = tempfile::tempdir().unwrap();
+    new_project(direct.path(), &with_repo(Flow::Direct), &FakeRunner::new()).unwrap();
+    let text = fs::read_to_string(direct.path().join("CONTRIBUTING.md")).unwrap();
+    assert!(!text.contains("Beta"), "{text}");
+    assert!(text.contains("`main`"));
+}
+
+#[test]
+fn a_folder_holding_only_dot_git_counts_as_empty() {
+    let tmp = tempfile::tempdir().unwrap();
+    fs::create_dir(tmp.path().join(".git")).unwrap();
+    fs::write(tmp.path().join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    new_project(tmp.path(), &args(Some("Foo"), &[]), &FakeRunner::new()).unwrap();
+    assert!(tmp.path().join("Cargo.toml").is_file());
+    fs::write(tmp.path().join("notes.txt"), "x").unwrap();
+    fs::remove_file(tmp.path().join("Cargo.toml")).unwrap();
+    assert!(new_project(tmp.path(), &args(Some("Foo"), &[]), &FakeRunner::new()).is_err());
 }
 
 #[test]
@@ -151,6 +300,7 @@ fn generated_product_builds_and_reports_its_version() {
         String::from_utf8_lossy(&out.stdout).into_owned()
     };
     cargo(&["test"]);
+    cargo(&["build", "-p", "foo-gui"]);
     let out = cargo(&["run", "-q", "-p", "foo-console", "--", "--version"]);
     assert_eq!(out.trim(), "foo-console 0.1.0-dev");
 }

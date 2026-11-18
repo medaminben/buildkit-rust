@@ -11,6 +11,25 @@ version = "{{bk_version}}"
 flow = "{{flow}}"
 repo = "{{repo}}"
 
+[workspace.metadata.bk.package]
+display-name = "{{name}}"
+main-app = "{{kebab}}-gui"
+apps = ["{{kebab}}-gui", "{{kebab}}-console"]
+iss = "installer/{{kebab}}.iss"
+desktop = "packaging/{{kebab}}.desktop"
+icon = "packaging/icon.png"
+extra-files = []
+system-deps.apt = [
+  "libxkbcommon0",
+  "libwayland-client0",
+  "libx11-6",
+  "libxcursor1",
+  "libxrandr2",
+  "libxi6",
+  "libvulkan1",
+  "libgl1",
+]
+
 [workspace.dependencies]
 buildkit = { git = "https://github.com/medaminben/buildkit-rust", tag = "v{{bk_version}}" }
 

@@ -1,4 +1,4 @@
-//! `cargo bk new`: a workspace, its crates and a console app.
+//! `cargo bk new`: a workspace, its crates, a console and a GUI app, and the shared files.
 
 use std::collections::BTreeMap;
 use std::collections::hash_map::RandomState;
@@ -28,6 +28,28 @@ impl Flow {
         match self {
             Flow::Direct => "direct",
             Flow::Beta => "beta",
+        }
+    }
+
+    /// The branch pull requests target.
+    fn pr_target(self) -> &'static str {
+        match self {
+            Flow::Direct => "main",
+            Flow::Beta => "Beta",
+        }
+    }
+
+    /// The CONTRIBUTING.md paragraph describing the flow.
+    fn workflow(self) -> &'static str {
+        match self {
+            Flow::Direct => {
+                "Branch from `main` and open a pull request into `main`. A release is a tag \
+`vX.Y.Z` on `main`."
+            }
+            Flow::Beta => {
+                "Branch from `Beta` and open a pull request into `Beta`. Beta is merged into \
+`main` by the maintainer when a release is due, so never open a feature pull request into `main`."
+            }
         }
     }
 
@@ -76,7 +98,7 @@ fn new_guid() -> String {
     let hi = (hi & !0xF000) | 0x4000;
     let lo = (lo & !(0xC000 << 48)) | (0x8000 << 48);
     format!(
-        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
+        "{:08X}-{:04X}-{:04X}-{:04X}-{:012X}",
         hi >> 32,
         (hi >> 16) & 0xFFFF,
         hi & 0xFFFF,
@@ -99,9 +121,10 @@ fn is_product(dir: &Path) -> bool {
 }
 
 fn check_target(dir: &Path) -> Result<()> {
+    // A folder that only holds `.git` is a fresh clone and counts as empty.
     let non_empty = dir
         .read_dir()
-        .is_ok_and(|mut entries| entries.next().is_some());
+        .is_ok_and(|mut entries| entries.any(|e| e.is_ok_and(|e| e.file_name() != ".git")));
     if non_empty && !is_product(dir) {
         bail!("folder is not empty and is not a buildkit-rust product");
     }
@@ -147,6 +170,8 @@ fn vars(product: &ProductName, krate: &CrateName, args: &NewArgs, rust: &str) ->
         ("app_id_guid", new_guid()),
         ("year", this_year().to_string()),
         ("flow", args.flow.as_str().to_string()),
+        ("pr_target", args.flow.pr_target().to_string()),
+        ("workflow", args.flow.workflow().to_string()),
         ("branches", args.flow.branches().to_string()),
         ("rust_version", rust.to_string()),
     ];
@@ -172,7 +197,7 @@ fn cargo(runner: &dyn Runner, dir: &Path, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// Writes the workspace, the crates and the console app into `dir`, then builds,
+/// Writes the workspace, the crates, both apps and the shared files into `dir`, then builds,
 /// tests and runs it unless `args.no_build` is set. Existing files are kept.
 ///
 /// # Errors
@@ -205,6 +230,15 @@ pub fn new_project(dir: &Path, args: &NewArgs, runner: &dyn Runner) -> Result<Wr
             &vars(&product, first, args, &rust),
         )?,
     );
+    let mut gui_vars = vars(&product, first, args, &rust);
+    gui_vars.0.insert("app", format!("{}-gui", product.kebab));
+    merge(&mut report, write_tree(tree("app-gui")?, dir, &gui_vars)?);
+    if args.repo.is_some() {
+        merge(
+            &mut report,
+            write_tree(tree("community")?, dir, &vars(&product, first, args, &rust))?,
+        );
+    }
 
     if !args.no_build {
         cargo(runner, dir, &["build"])?;
