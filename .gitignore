@@ -1,0 +1,17 @@
+# Build output
+build/
+
+# Node tooling
+node_modules/
+npm-debug.log*
+
+# Machine-specific
+*.user
+.vscode/settings.local.json
+
+# Local scratch workspace
+/.superpowers/
+
+# OS
+.DS_Store
+Thumbs.db

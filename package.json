@@ -1,0 +1,20 @@
+{
+  "name": "buildkit-rust",
+  "private": true,
+  "description": "Lint tooling for buildkit-rust (commitlint, rustfmt on staged files)",
+  "scripts": {
+    "prepare": "husky",
+    "commitlint": "commitlint --config lint/commitlint.config.cjs --edit"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.0",
+    "@commitlint/config-conventional": "^19.8.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.0"
+  },
+  "lint-staged": {
+    "*.rs": [
+      "rustfmt --edition 2024"
+    ]
+  }
+}

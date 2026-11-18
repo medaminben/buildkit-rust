@@ -1,0 +1,48 @@
+name: Bug report
+description: Something configures, builds, packages or releases wrong.
+labels: [bug]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - cargo bk (new, add-crate, add-app)
+        - Project templates
+        - Bootstrap scripts
+        - Packaging / Windows installer
+        - Reusable workflows (ci, codeql, release)
+        - Release tools
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest Cargo.toml or workflow call that shows it, if you can.
+      placeholder: |
+        1. cargo bk new MyApp
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: 'buildkit-rust tag or commit, OS, rustc and cargo versions (`rustc -V`, `cargo -V`).'
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Configure or build output, or the failing workflow run.
+      render: text
