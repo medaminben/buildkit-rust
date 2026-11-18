@@ -159,6 +159,8 @@ pub(crate) fn vars(
     let entries = [
         ("name", product.display.clone()),
         ("kebab", product.kebab.clone()),
+        // The installer file name stem; `cargo bk package` builds the same one.
+        ("name_file", product.display.replace(' ', "-")),
         ("snake", product.snake.clone()),
         ("crate", krate.dir.clone()),
         ("crate_snake", krate.snake.clone()),

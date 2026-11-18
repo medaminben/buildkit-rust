@@ -156,3 +156,66 @@ fn real_build_produces_both_exes() {
     let files = build_inno(&ctx, &SystemRunner, &env).unwrap();
     assert!(files.iter().all(|f| f.is_file()));
 }
+
+#[test]
+fn dev_version_keeps_the_plus() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let dist = root.join("build/dist");
+    fs::create_dir_all(&dist).unwrap();
+    fs::write(dist.join("Foo-Bar_Setup_1.2.3+2.gabc1234.exe"), "setup").unwrap();
+    let exe = tmp.path().join("ISCC.exe");
+    fs::write(&exe, "").unwrap();
+    let r = FakeRunner::new().with_output(&exe.display().to_string(), 0, "");
+    let m = meta();
+    let v = buildkit::Version {
+        numeric: "1.2.3".into(),
+        full: "1.2.3+2.gabc1234".into(),
+    };
+    let stage = root.join("build/stage");
+    let ctx = PackageCtx {
+        root,
+        stage: &stage,
+        out: &dist,
+        meta: &m,
+        kebab: "foo-bar",
+        maintainer: "acme",
+        version: &v,
+    };
+    let env = |k: &str| (k == "BK_ISCC").then(|| exe.display().to_string());
+    let files = build_inno(&ctx, &r, &env).unwrap();
+    assert_eq!(
+        files,
+        [
+            dist.join("Foo-Bar_Setup_1.2.3+2.gabc1234.exe"),
+            dist.join("Foo-Bar_Setup.exe")
+        ]
+    );
+    let args = &r.calls()[0].args;
+    assert!(args.contains(&"/FFoo-Bar_Setup_1.2.3+2.gabc1234".to_string()));
+    assert!(args.contains(&"/DAppVersion=1.2.3+2.gabc1234".to_string()));
+}
+
+#[test]
+fn iscc_failure_shows_stdout_when_stderr_is_empty() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let exe = tmp.path().join("ISCC.exe");
+    fs::write(&exe, "").unwrap();
+    let r = FakeRunner::new().with_output(&exe.display().to_string(), 1, "Error on line 3\n");
+    let (m, v) = (meta(), version());
+    let stage = root.join("build/stage");
+    let dist = root.join("build/dist");
+    let ctx = PackageCtx {
+        root,
+        stage: &stage,
+        out: &dist,
+        meta: &m,
+        kebab: "foo-bar",
+        maintainer: "acme",
+        version: &v,
+    };
+    let env = |k: &str| (k == "BK_ISCC").then(|| exe.display().to_string());
+    let e = build_inno(&ctx, &r, &env).unwrap_err().to_string();
+    assert_eq!(e, "ISCC failed: Error on line 3");
+}

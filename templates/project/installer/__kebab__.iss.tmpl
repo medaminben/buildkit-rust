@@ -1,8 +1,11 @@
 ; Inno Setup script for {{name}}. Built by `cargo bk package`, which passes
-; /DAppVersion, /DAppVersionNumeric, /DStageDir and /O build/dist.
+; /DAppVersion, /DAppVersionNumeric, /DStageDir, /O build/dist and
+; /F<name>_Setup_<version>. /O and /F override OutputDir and OutputBaseFilename below,
+; which keep a manual ISCC run on the same file name.
 ; Never change this AppId: it is how upgrades find the existing install.
 #define MyAppId "{{app_id_guid}}"
 #define MyAppName "{{name}}"
+#define MyAppFileName "{{name_file}}"
 #define MyAppExe "{{kebab}}-gui.exe"
 
 #ifndef AppVersion
@@ -23,7 +26,7 @@ VersionInfoVersion={#AppVersionNumeric}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExe}
-OutputBaseFilename={#MyAppName}_Setup_{#AppVersion}
+OutputBaseFilename={#MyAppFileName}_Setup_{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible

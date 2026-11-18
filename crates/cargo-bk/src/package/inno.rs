@@ -85,7 +85,13 @@ pub fn build_inno(
         env: Vec::new(),
     })?;
     if res.status != 0 {
-        bail!("ISCC failed: {}", res.stderr.trim());
+        // ISCC writes most diagnostics to stdout.
+        let detail = if res.stderr.trim().is_empty() {
+            &res.stdout
+        } else {
+            &res.stderr
+        };
+        bail!("ISCC failed: {}", detail.trim());
     }
     let versioned = ctx.out.join(format!("{name}_Setup_{full}.exe"));
     if !versioned.is_file() {

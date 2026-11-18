@@ -307,3 +307,10 @@ fn generated_product_builds_and_reports_its_version() {
     let out = cargo(&["run", "-q", "-p", "foo-console", "--", "--version"]);
     assert_eq!(out.trim(), "foo-console 0.1.0-dev");
 }
+
+#[test]
+fn iss_output_name_matches_the_packager() {
+    let t = include_str!("../../../templates/project/installer/__kebab__.iss.tmpl");
+    assert!(t.contains("#define MyAppFileName \"{{name_file}}\""));
+    assert!(t.contains("OutputBaseFilename={#MyAppFileName}_Setup_{#AppVersion}"));
+}
