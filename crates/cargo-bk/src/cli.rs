@@ -1,5 +1,6 @@
 //! The command line.
 
+use crate::commands::add::AddAppArgs;
 use crate::commands::new::NewArgs;
 use clap::{Parser, Subcommand};
 
@@ -22,9 +23,12 @@ pub enum Command {
     /// Create a product.
     New(NewArgs),
     /// Add a library crate.
-    AddCrate,
+    AddCrate {
+        /// Crate name; becomes `crates/<name>` and package `<product>-<name>`.
+        name: String,
+    },
     /// Add an app crate.
-    AddApp,
+    AddApp(AddAppArgs),
     /// Print the product version.
     Version,
     /// Build the installer package.

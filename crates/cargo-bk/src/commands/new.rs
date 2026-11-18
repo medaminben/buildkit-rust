@@ -10,6 +10,7 @@ use anyhow::{Context, Result, bail};
 use clap::{Args, ValueEnum};
 
 use super::OWN_VERSION;
+use crate::docs_rows::{add_layout_row, app_row, crate_row};
 use crate::exec::{Cmd, Runner};
 use crate::names::{CrateName, ProductName};
 use crate::templates::{TEMPLATES, Vars, WriteReport, write_tree};
@@ -70,7 +71,7 @@ pub struct NewArgs {
 }
 
 /// The rust-toolchain channel of this repository, the one products start on.
-fn rust_version() -> Result<String> {
+pub(crate) fn rust_version() -> Result<String> {
     let doc: toml_edit::DocumentMut = include_str!("../../../../rust-toolchain.toml").parse()?;
     doc["toolchain"]["channel"]
         .as_str()
@@ -145,8 +146,15 @@ fn crate_names(args: &NewArgs) -> Result<Vec<CrateName>> {
         .collect()
 }
 
-fn vars(product: &ProductName, krate: &CrateName, args: &NewArgs, rust: &str) -> Vars {
-    let repo = args.repo.clone().unwrap_or_default();
+/// Placeholder values for one crate (and the app built on it) of a product.
+pub(crate) fn vars(
+    product: &ProductName,
+    krate: &CrateName,
+    repo: &str,
+    flow: Flow,
+    rust: &str,
+) -> Vars {
+    let repo = repo.to_string();
     let owner = repo.split('/').next().unwrap_or_default().to_string();
     let entries = [
         ("name", product.display.clone()),
@@ -162,15 +170,15 @@ fn vars(product: &ProductName, krate: &CrateName, args: &NewArgs, rust: &str) ->
         // Braced, as Inno Setup spells an AppId; the .iss escapes the leading brace.
         ("app_id_guid", format!("{{{}}}", new_guid())),
         ("year", this_year().to_string()),
-        ("flow", args.flow.as_str().to_string()),
-        ("workflow", args.flow.workflow().to_string()),
-        ("branches", args.flow.branches().to_string()),
+        ("flow", flow.as_str().to_string()),
+        ("workflow", flow.workflow().to_string()),
+        ("branches", flow.branches().to_string()),
         ("rust_version", rust.to_string()),
     ];
     Vars(BTreeMap::from(entries))
 }
 
-fn merge(into: &mut WriteReport, from: WriteReport) {
+pub(crate) fn merge(into: &mut WriteReport, from: WriteReport) {
     into.created.extend(from.created);
     into.kept.extend(from.kept);
 }
@@ -185,6 +193,25 @@ fn cargo(runner: &dyn Runner, dir: &Path, args: &[&str]) -> Result<()> {
     let out = runner.run(&cmd)?;
     if out.status != 0 {
         bail!("`cargo {}` failed:\n{}", args.join(" "), out.stderr);
+    }
+    Ok(())
+}
+
+/// Fills the layout tables of README.md and ARCHITECTURE.md with the crates and both apps.
+fn layout_rows(dir: &Path, product: &ProductName, crates: &[CrateName]) -> Result<()> {
+    let mut rows: Vec<String> = crates.iter().map(|c| crate_row(product, c)).collect();
+    rows.push(app_row(
+        &format!("{}-gui", product.kebab),
+        "the desktop app.",
+    ));
+    rows.push(app_row(
+        &format!("{}-console", product.kebab),
+        "the command-line app.",
+    ));
+    for row in &rows {
+        for note in add_layout_row(dir, row)? {
+            println!("{note}");
+        }
     }
     Ok(())
 }
@@ -207,30 +234,27 @@ pub fn new_project(dir: &Path, args: &NewArgs, runner: &dyn Runner) -> Result<Wr
     };
 
     let first = &crates[0];
-    let mut report = write_tree(tree("project")?, dir, &vars(&product, first, args, &rust))?;
+    let repo = args.repo.clone().unwrap_or_default();
+    let vars = |krate: &CrateName| vars(&product, krate, &repo, args.flow, &rust);
+    let mut report = write_tree(tree("project")?, dir, &vars(first))?;
     for krate in &crates {
-        merge(
-            &mut report,
-            write_tree(tree("crate")?, dir, &vars(&product, krate, args, &rust))?,
-        );
+        merge(&mut report, write_tree(tree("crate")?, dir, &vars(krate))?);
     }
     merge(
         &mut report,
-        write_tree(
-            tree("app-console")?,
-            dir,
-            &vars(&product, first, args, &rust),
-        )?,
+        write_tree(tree("app-console")?, dir, &vars(first))?,
     );
-    let mut gui_vars = vars(&product, first, args, &rust);
+    let mut gui_vars = vars(first);
     gui_vars.0.insert("app", format!("{}-gui", product.kebab));
     merge(&mut report, write_tree(tree("app-gui")?, dir, &gui_vars)?);
     if args.repo.is_some() {
         merge(
             &mut report,
-            write_tree(tree("community")?, dir, &vars(&product, first, args, &rust))?,
+            write_tree(tree("community")?, dir, &vars(first))?,
         );
     }
+
+    layout_rows(dir, &product, &crates)?;
 
     if !args.no_build {
         cargo(runner, dir, &["build"])?;
