@@ -99,11 +99,11 @@ fn pin_mismatch_warns_and_carries_on() {
 }
 
 #[test]
-fn unimplemented_command_bails() {
+fn repo_setup_accepts_dry_run_and_checks() {
     let t = tempfile::tempdir().unwrap();
     cargo_bk(t.path())
-        .arg("repo-setup")
+        .args(["repo-setup", "--dry-run", "--checks", "a,b"])
         .assert()
         .code(1)
-        .stderr(predicate::str::contains("not implemented yet"));
+        .stderr(predicate::str::contains("no Cargo workspace found"));
 }

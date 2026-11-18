@@ -112,7 +112,13 @@ fn run(cli: &Cli) -> Result<()> {
         Some(Command::Unlink { rewrite_dep }) => {
             commands::link::run_unlink(Workspace::find(&std::env::current_dir()?)?, *rewrite_dep)
         }
-        Some(_) => bail!("not implemented yet"),
+        Some(Command::RepoSetup { dry_run, checks }) => commands::repo_setup::run(
+            &Workspace::find(&std::env::current_dir()?)?,
+            &exec::SystemRunner,
+            *dry_run,
+            checks.as_deref(),
+            &mut std::io::stdout(),
+        ),
         None => bail!("no command given; see cargo bk --help"),
     }
 }

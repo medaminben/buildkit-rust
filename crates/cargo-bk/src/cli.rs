@@ -74,5 +74,12 @@ pub enum Command {
         rewrite_dep: bool,
     },
     /// Set up the repository.
-    RepoSetup,
+    RepoSetup {
+        /// Print the commands and run none of the changing ones.
+        #[arg(long)]
+        dry_run: bool,
+        /// Required check names, separated by commas; replaces the defaults.
+        #[arg(long, value_delimiter = ',', value_name = "NAME,...")]
+        checks: Option<Vec<String>>,
+    },
 }

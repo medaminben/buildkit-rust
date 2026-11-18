@@ -7,6 +7,7 @@ pub mod link;
 pub mod manual;
 pub mod new;
 pub mod package;
+pub mod repo_setup;
 pub mod upgrade;
 pub mod version;
 

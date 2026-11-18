@@ -59,6 +59,16 @@ impl Workspace {
             .map(str::to_string)
     }
 
+    /// `[workspace.metadata.buildkit].flow`.
+    #[must_use]
+    pub fn bk_flow(&self) -> Option<String> {
+        self.metadata()?
+            .get("buildkit")?
+            .get("flow")?
+            .as_str()
+            .map(str::to_string)
+    }
+
     fn metadata(&self) -> Option<&Item> {
         self.doc.get("workspace")?.get("metadata")
     }
