@@ -102,9 +102,12 @@ function Format-Command([string]$Exe, [string[]]$CmdArgs) {
 }
 
 # Run <exe> <args[]>: prints instead of running under -DryRun. Arguments stay separate, so a
-# path with a space reaches the tool as one argument.
+# path with a space reaches the tool as one argument. Callers check $LASTEXITCODE. Under
+# 'Stop', Windows PowerShell turns a tool's stderr into a terminating error once the caller
+# redirects the output (cargo prints its progress there).
 function Run([string]$Exe, [string[]]$CmdArgs = @()) {
     if ($DryRun) { Write-Host "[dry-run] $(Format-Command $Exe $CmdArgs)"; return }
+    $ErrorActionPreference = 'Continue'
     & $Exe @CmdArgs
 }
 
@@ -134,7 +137,13 @@ function Initialize-SessionPath {
     }
     $parts += $env:Path
     $parts += (Join-Path (Join-Path $HOME '.cargo') 'bin')
-    $env:Path = ($parts -join [IO.Path]::PathSeparator)
+    # Each run would otherwise append the whole PATH again; past 32K characters Windows
+    # cannot start a process any more.
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $unique = foreach ($p in ($parts -join [IO.Path]::PathSeparator).Split([IO.Path]::PathSeparator)) {
+        if ($p -and $seen.Add($p)) { $p }
+    }
+    $env:Path = ($unique -join [IO.Path]::PathSeparator)
 }
 
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
@@ -206,8 +215,8 @@ function Install-CargoTool([string]$Crate, [string]$Sub) {
         Write-Host "[dry-run] cargo binstall --no-confirm --locked $Crate || cargo install --locked $Crate"
         return
     }
-    cargo binstall --no-confirm --locked $Crate
-    if ($LASTEXITCODE -ne 0) { cargo install --locked $Crate }
+    Run 'cargo' @('binstall', '--no-confirm', '--locked', $Crate)
+    if ($LASTEXITCODE -ne 0) { Run 'cargo' @('install', '--locked', $Crate) }
 }
 
 function Install-CargoBk {
@@ -328,7 +337,7 @@ if ($DryRun) {
     Say 'Checking the machine'
     $doctorArgs = @('bk', 'doctor')
     if (-not (Test-InProduct)) { $doctorArgs += '--machine' }
-    & cargo @doctorArgs
+    Run 'cargo' $doctorArgs
     if ($LASTEXITCODE -ne 0) { Warn 'cargo bk doctor found problems; the fix is named next to each one' }
 }
 # Doctor findings are warnings, as in bootstrap.sh; do not hand its exit code to the caller.

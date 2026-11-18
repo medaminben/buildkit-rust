@@ -69,7 +69,12 @@ BeforeAll {
         $global:CallArgs = @()
         $global:StubMissing = $Missing
         $global:BkVersion = $BkVersion
-        $out = & $Script @Params *>&1 | Out-String
+        $path = $env:Path
+        try {
+            $out = & $Script @Params *>&1 | Out-String
+        } finally {
+            $env:Path = $path
+        }
         return $out
     }
 }
@@ -273,6 +278,20 @@ Describe 'bootstrap.ps1' {
         It 'does not run doctor under -DryRun' {
             Invoke-Bootstrap -Missing 'all' -Params @{ Yes = $true; DryRun = $true } | Out-Null
             $global:Calls | Where-Object { $_ -match '^cargo bk doctor' } | Should -BeNullOrEmpty
+        }
+    }
+    Context 'PATH' {
+        It 'does not grow when the script runs twice in one session' {
+            $path = $env:Path
+            try {
+                $global:StubMissing = @()
+                & $script:Bootstrap -Yes *>&1 | Out-Null
+                $once = $env:Path
+                & $script:Bootstrap -Yes *>&1 | Out-Null
+                $env:Path | Should -Be $once
+            } finally {
+                $env:Path = $path
+            }
         }
     }
 }
