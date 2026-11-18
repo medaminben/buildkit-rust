@@ -53,11 +53,12 @@
 #   buildkit-ref         Tag, branch or SHA of buildkit-rust to use. Empty (default):
 #                        cargo-bk comes from the tag v<version> of the product's
 #                        [workspace.metadata.buildkit] pin and the product builds
-#                        against its own pinned git tag. Set: cargo-bk is installed
-#                        from that ref, buildkit-rust is checked out at that ref into
-#                        .buildkit-rust and cargo bk link --rewrite-dep points the
-#                        product at the checkout (for a pre-release that is not
-#                        published as a tag yet). This is the counterpart of
+#                        against its own pinned git tag. Set: buildkit-rust is checked
+#                        out at that ref into $RUNNER_TEMP/buildkit-rust (outside the
+#                        product workspace), cargo-bk is installed from that checkout and
+#                        cargo bk link --rewrite-dep points the product at it (for a
+#                        pre-release that is not
+#                        published as a tag yet). The counterpart of
 #                        BUILDKIT_DIR in buildkit.
 #   working-directory    Folder of the product inside the repository. Default "."
 #                        (used by the self-test on a committed fixture product).
@@ -174,7 +175,7 @@ jobs:
           APT_INPUT: ${{ inputs.apt-packages }}
         run: |
           set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
           import os, tomllib
           with open("Cargo.toml", "rb") as f:
               ws = tomllib.load(f)["workspace"]["metadata"]
@@ -199,33 +200,37 @@ jobs:
         with:
           workspaces: ${{ inputs.working-directory }}
           key: bk-${{ steps.bk.outputs.ref }}
-      - name: Install cargo-bk
-        env:
-          REPO: ${{ inputs.buildkit-repository }}
-          REF: ${{ steps.bk.outputs.ref }}
-        run: |
-          set -euo pipefail
-          if [[ "$REF" =~ ^v[0-9] ]]; then
-            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
-          else
-            cargo install --git "https://github.com/$REPO" --rev "$REF" cargo-bk --locked --force
-          fi
-      - name: Check the pins
-        run: cargo bk check-pins
       - uses: actions/checkout@v4
         if: inputs.buildkit-ref != ''
         with:
           repository: ${{ inputs.buildkit-repository }}
           ref: ${{ inputs.buildkit-ref }}
           path: .buildkit-rust
+          fetch-depth: 0
+      - name: Move the buildkit-rust checkout out of the product workspace
+        if: inputs.buildkit-ref != ''
+        run: mv "$GITHUB_WORKSPACE/.buildkit-rust" "$RUNNER_TEMP/buildkit-rust"
+      - name: Install cargo-bk
+        env:
+          REPO: ${{ inputs.buildkit-repository }}
+          REF: ${{ steps.bk.outputs.ref }}
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BUILDKIT_REF" ]; then
+            cargo install --path "$RUNNER_TEMP/buildkit-rust/crates/cargo-bk" --locked --force
+          else
+            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
+          fi
       - name: Link the product to the buildkit-rust checkout
         if: inputs.buildkit-ref != ''
         run: |
           set -euo pipefail
-          echo "/.buildkit-rust/" >> "$(git rev-parse --git-dir)/info/exclude"
-          cargo bk link --rewrite-dep "$GITHUB_WORKSPACE/.buildkit-rust"
+          cargo bk link --rewrite-dep "$RUNNER_TEMP/buildkit-rust"
           # Brings Cargo.lock in line with the path dependency.
           cargo metadata --format-version 1 > /dev/null
+      - name: Check the pins
+        run: cargo bk check-pins
       - name: Manual check
         run: cargo bk manual --check
       - name: Check formatting
@@ -243,7 +248,7 @@ jobs:
             specs=('*.rs')
             for glob in "${excludes[@]}"; do specs+=(":(exclude)$glob"); done
             mapfile -t files < <(git ls-files -- "${specs[@]}")
-            edition="$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['workspace']['package']['edition'])")"
+            edition="$(python -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['workspace']['package']['edition'])")"
             if ((${#files[@]})); then
               rustfmt --check --edition "$edition" "${files[@]}"
             fi
@@ -303,7 +308,7 @@ jobs:
           APT_INPUT: ${{ inputs.apt-packages }}
         run: |
           set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
           import os, tomllib
           with open("Cargo.toml", "rb") as f:
               ws = tomllib.load(f)["workspace"]["metadata"]
@@ -330,29 +335,34 @@ jobs:
         with:
           workspaces: ${{ inputs.working-directory }}
           key: bk-${{ steps.bk.outputs.ref }}
-      - name: Install cargo-bk
-        env:
-          REPO: ${{ inputs.buildkit-repository }}
-          REF: ${{ steps.bk.outputs.ref }}
-        run: |
-          set -euo pipefail
-          if [[ "$REF" =~ ^v[0-9] ]]; then
-            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
-          else
-            cargo install --git "https://github.com/$REPO" --rev "$REF" cargo-bk --locked --force
-          fi
       - uses: actions/checkout@v4
         if: inputs.buildkit-ref != ''
         with:
           repository: ${{ inputs.buildkit-repository }}
           ref: ${{ inputs.buildkit-ref }}
           path: .buildkit-rust
+          fetch-depth: 0
+      - name: Move the buildkit-rust checkout out of the product workspace
+        if: inputs.buildkit-ref != ''
+        run: mv "$GITHUB_WORKSPACE/.buildkit-rust" "$RUNNER_TEMP/buildkit-rust"
+      - name: Install cargo-bk
+        if: inputs.buildkit-ref != ''
+        env:
+          REPO: ${{ inputs.buildkit-repository }}
+          REF: ${{ steps.bk.outputs.ref }}
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BUILDKIT_REF" ]; then
+            cargo install --path "$RUNNER_TEMP/buildkit-rust/crates/cargo-bk" --locked --force
+          else
+            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
+          fi
       - name: Link the product to the buildkit-rust checkout
         if: inputs.buildkit-ref != ''
         run: |
           set -euo pipefail
-          echo "/.buildkit-rust/" >> "$(git rev-parse --git-dir)/info/exclude"
-          cargo bk link --rewrite-dep "$GITHUB_WORKSPACE/.buildkit-rust"
+          cargo bk link --rewrite-dep "$RUNNER_TEMP/buildkit-rust"
           # Brings Cargo.lock in line with the path dependency.
           cargo metadata --format-version 1 > /dev/null
       - name: Build
@@ -397,7 +407,7 @@ jobs:
           APT_INPUT: ${{ inputs.apt-packages }}
         run: |
           set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
           import os, tomllib
           with open("Cargo.toml", "rb") as f:
               ws = tomllib.load(f)["workspace"]["metadata"]
@@ -426,29 +436,34 @@ jobs:
         with:
           workspaces: ${{ inputs.working-directory }}
           key: bk-${{ steps.bk.outputs.ref }}
-      - name: Install cargo-bk
-        env:
-          REPO: ${{ inputs.buildkit-repository }}
-          REF: ${{ steps.bk.outputs.ref }}
-        run: |
-          set -euo pipefail
-          if [[ "$REF" =~ ^v[0-9] ]]; then
-            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
-          else
-            cargo install --git "https://github.com/$REPO" --rev "$REF" cargo-bk --locked --force
-          fi
       - uses: actions/checkout@v4
         if: inputs.buildkit-ref != ''
         with:
           repository: ${{ inputs.buildkit-repository }}
           ref: ${{ inputs.buildkit-ref }}
           path: .buildkit-rust
+          fetch-depth: 0
+      - name: Move the buildkit-rust checkout out of the product workspace
+        if: inputs.buildkit-ref != ''
+        run: mv "$GITHUB_WORKSPACE/.buildkit-rust" "$RUNNER_TEMP/buildkit-rust"
+      - name: Install cargo-bk
+        if: inputs.buildkit-ref != ''
+        env:
+          REPO: ${{ inputs.buildkit-repository }}
+          REF: ${{ steps.bk.outputs.ref }}
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BUILDKIT_REF" ]; then
+            cargo install --path "$RUNNER_TEMP/buildkit-rust/crates/cargo-bk" --locked --force
+          else
+            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
+          fi
       - name: Link the product to the buildkit-rust checkout
         if: inputs.buildkit-ref != ''
         run: |
           set -euo pipefail
-          echo "/.buildkit-rust/" >> "$(git rev-parse --git-dir)/info/exclude"
-          cargo bk link --rewrite-dep "$GITHUB_WORKSPACE/.buildkit-rust"
+          cargo bk link --rewrite-dep "$RUNNER_TEMP/buildkit-rust"
           # Brings Cargo.lock in line with the path dependency.
           cargo metadata --format-version 1 > /dev/null
       - uses: taiki-e/install-action@v2
@@ -491,7 +506,7 @@ jobs:
           APT_INPUT: ${{ inputs.apt-packages }}
         run: |
           set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
           import os, tomllib
           with open("Cargo.toml", "rb") as f:
               ws = tomllib.load(f)["workspace"]["metadata"]
@@ -518,29 +533,34 @@ jobs:
         with:
           workspaces: ${{ inputs.working-directory }}
           key: bk-${{ steps.bk.outputs.ref }}
-      - name: Install cargo-bk
-        env:
-          REPO: ${{ inputs.buildkit-repository }}
-          REF: ${{ steps.bk.outputs.ref }}
-        run: |
-          set -euo pipefail
-          if [[ "$REF" =~ ^v[0-9] ]]; then
-            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
-          else
-            cargo install --git "https://github.com/$REPO" --rev "$REF" cargo-bk --locked --force
-          fi
       - uses: actions/checkout@v4
         if: inputs.buildkit-ref != ''
         with:
           repository: ${{ inputs.buildkit-repository }}
           ref: ${{ inputs.buildkit-ref }}
           path: .buildkit-rust
+          fetch-depth: 0
+      - name: Move the buildkit-rust checkout out of the product workspace
+        if: inputs.buildkit-ref != ''
+        run: mv "$GITHUB_WORKSPACE/.buildkit-rust" "$RUNNER_TEMP/buildkit-rust"
+      - name: Install cargo-bk
+        if: inputs.buildkit-ref != ''
+        env:
+          REPO: ${{ inputs.buildkit-repository }}
+          REF: ${{ steps.bk.outputs.ref }}
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BUILDKIT_REF" ]; then
+            cargo install --path "$RUNNER_TEMP/buildkit-rust/crates/cargo-bk" --locked --force
+          else
+            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
+          fi
       - name: Link the product to the buildkit-rust checkout
         if: inputs.buildkit-ref != ''
         run: |
           set -euo pipefail
-          echo "/.buildkit-rust/" >> "$(git rev-parse --git-dir)/info/exclude"
-          cargo bk link --rewrite-dep "$GITHUB_WORKSPACE/.buildkit-rust"
+          cargo bk link --rewrite-dep "$RUNNER_TEMP/buildkit-rust"
           # Brings Cargo.lock in line with the path dependency.
           cargo metadata --format-version 1 > /dev/null
       - name: Miri
@@ -584,7 +604,7 @@ jobs:
           APT_INPUT: ${{ inputs.apt-packages }}
         run: |
           set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
           import os, tomllib
           with open("Cargo.toml", "rb") as f:
               ws = tomllib.load(f)["workspace"]["metadata"]
@@ -609,34 +629,44 @@ jobs:
         with:
           workspaces: ${{ inputs.working-directory }}
           key: bk-${{ steps.bk.outputs.ref }}
-      - name: Install cargo-bk
-        env:
-          REPO: ${{ inputs.buildkit-repository }}
-          REF: ${{ steps.bk.outputs.ref }}
-        run: |
-          set -euo pipefail
-          if [[ "$REF" =~ ^v[0-9] ]]; then
-            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
-          else
-            cargo install --git "https://github.com/$REPO" --rev "$REF" cargo-bk --locked --force
-          fi
       - uses: actions/checkout@v4
         if: inputs.buildkit-ref != ''
         with:
           repository: ${{ inputs.buildkit-repository }}
           ref: ${{ inputs.buildkit-ref }}
           path: .buildkit-rust
+          fetch-depth: 0
+      - name: Move the buildkit-rust checkout out of the product workspace
+        if: inputs.buildkit-ref != ''
+        run: mv "$GITHUB_WORKSPACE/.buildkit-rust" "$RUNNER_TEMP/buildkit-rust"
+      - name: Install cargo-bk
+        env:
+          REPO: ${{ inputs.buildkit-repository }}
+          REF: ${{ steps.bk.outputs.ref }}
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BUILDKIT_REF" ]; then
+            cargo install --path "$RUNNER_TEMP/buildkit-rust/crates/cargo-bk" --locked --force
+          else
+            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
+          fi
       - name: Link the product to the buildkit-rust checkout
         if: inputs.buildkit-ref != ''
         run: |
           set -euo pipefail
-          echo "/.buildkit-rust/" >> "$(git rev-parse --git-dir)/info/exclude"
-          cargo bk link --rewrite-dep "$GITHUB_WORKSPACE/.buildkit-rust"
+          cargo bk link --rewrite-dep "$RUNNER_TEMP/buildkit-rust"
           # Brings Cargo.lock in line with the path dependency.
           cargo metadata --format-version 1 > /dev/null
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: |
+          if [ ! -e "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+            choco install innosetup -y --no-progress
+          fi
       - name: Package
         run: cargo bk package
       - uses: actions/upload-artifact@v4
