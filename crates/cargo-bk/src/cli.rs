@@ -44,7 +44,10 @@ pub enum Command {
     /// Check the pinned tool versions.
     CheckPins,
     /// Move the product to this cargo-bk version.
-    Upgrade,
+    Upgrade {
+        /// Target version, with or without a leading `v`.
+        version: String,
+    },
     /// Link the product to a local buildkit-rust.
     Link,
     /// Undo `link`.
