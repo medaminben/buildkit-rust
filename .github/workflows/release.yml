@@ -27,7 +27,7 @@
 # caller's [workspace.metadata.buildkit] pin, which is read from the caller's
 # Cargo.toml after the first checkout.
 #
-# first-release: an optional key "first-release = "X.Y.Z"" in the caller's
+# first-release: an optional key, first-release = "X.Y.Z", in the caller's
 # [workspace.metadata.buildkit] sets the first release while no stable tag exists.
 #
 # installer-workflow is started with "gh workflow run <file> --ref <tag>", so

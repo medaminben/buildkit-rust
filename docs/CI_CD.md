@@ -163,7 +163,7 @@ The bump comes from the label of the merged pull request: `semver:major`, `semve
 
 ### First release
 
-While the repository has no stable tag, the first release is `0.1.0` plus the label bump. To
+While the repository has no stable tag, the first release is `0.1.0`, whatever the bump label. To
 start elsewhere, set `first-release` under `[workspace.metadata.buildkit]` in the product's
 `Cargo.toml`:
 
