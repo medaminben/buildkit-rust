@@ -60,6 +60,7 @@ groups it installs are in [bootstrap/README.md](bootstrap/README.md).
 | `CRATE...` | Library crates after the name; default: `core` |
 | `--repo <owner/repo>` | Public product on GitHub: also writes `LICENSE` (MIT), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` and the issue and PR templates |
 | `--flow direct\|beta` | Branch flow, default `direct`: feature branches merge into `main`. With `beta` they merge into `Beta`, which is promoted to `main` |
+| `--first-release <X.Y.Z>` | Version of the first release, default `0.1.0`. Written as `first-release` and as the workspace version. Needs buildkit-rust 0.2.0 or later |
 | `--no-build` | Skip the first build, test and run |
 
 Existing files are never overwritten, so running the command again is safe. It writes the

@@ -171,6 +171,14 @@ class FirstReleaseTest(unittest.TestCase):
                                       "--first-release", "2.0.0"])
         self.assertEqual((code, out.getvalue().strip()), (0, "v2.0.0-beta.1"))
 
+    def test_cli_malformed_first_release_exits_2(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = plan_release.main(["--repo", self.repo, "--base", "Beta", "--sha", self.sha,
+                                      "--first-release", "2.0"])
+        self.assertEqual((code, out.getvalue()), (2, ""))
+        self.assertIn("2.0", err.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

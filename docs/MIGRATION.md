@@ -86,7 +86,7 @@ why it was dropped on purpose.
 
 | buildkit | buildkit-rust |
 |---|---|
-| `tools/release/next_version.py`, `plan_release.py` and their tests | Copied unchanged into `tools/release/`, used by `release.yml` |
+| `tools/release/next_version.py`, `plan_release.py` and their tests | Copied into `tools/release/`, used by `release.yml`; they also take `first-release` |
 | `tools/manual/build_manual.py`, `template.html`, `manual.css`, `manual.js` and tests | Copied into `tools/manual/` and embedded in `cargo-bk` |
 | `tools/manual/capture.sh` | **Planned (deferred, required).** Not in the first release. See [Deferred](#deferred-planned-required) |
 | `tests/release_pins/check_pins.py` | `cargo bk check-pins`, in the `lint` job. It also checks the lint file copies, and buildkit-rust runs it on its own docs |

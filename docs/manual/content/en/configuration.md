@@ -14,6 +14,7 @@ summary: Every setting, file, label and environment variable that cargo bk reads
 | --- | --- |
 | `version` | The buildkit-rust version the product expects, as `X.Y.Z` without a `v`. It is the single source of the pin. The workflows install exactly this tag, and `cargo bk check-pins` compares every other mention with it. |
 | `flow` | `direct` or `beta`. Default: `direct`. `repo-setup` and `add-crate` read it. |
+| `first-release` | Optional. The version of the first release, as `X.Y.Z`. Only used while the repository has no stable tag; ignored after the first stable release. Written by `cargo bk new --first-release`. |
 | `repo` | The GitHub repository as `owner/repo`. Empty when `new` ran without `--repo`. The owner is the maintainer of the `.deb`. |
 
 ### `[workspace.metadata.bk.package]` {#package-keys}

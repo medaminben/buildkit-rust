@@ -127,9 +127,11 @@ jobs:
           git fetch --tags --force
           fork=()
           if [ "$HEAD_REPO" != "$THIS_REPO" ]; then fork=(--from-fork); fi
+          first=()
+          if [ -n "$FIRST_RELEASE" ]; then first=(--first-release "$FIRST_RELEASE"); fi
           tag="$(python3 -B -I .buildkit/tools/release/plan_release.py \
             --labels "$LABELS" --base "$BASE_REF" --head "$HEAD_REF" --sha "$SHA" \
-            --first-release "$FIRST_RELEASE" "${fork[@]}" --notes-file "$RUNNER_TEMP/notes.md")"
+            "${first[@]}" "${fork[@]}" --notes-file "$RUNNER_TEMP/notes.md")"
           if [ -z "$tag" ]; then
             echo "::notice::No release for this pull request (semver:none)."
           fi

@@ -101,7 +101,8 @@ class NextVersionTests(unittest.TestCase):
             next_version("1.5.4", [], "Beta", latest_beta="1.6.0")
 
     def test_first_release_replaces_initial_version_on_main(self):
-        self.assertEqual(next_version(None, ["semver:patch"], "main", first_release="2.0.0"), "2.0.0")
+        tag = next_version(None, ["semver:patch"], "main", first_release="2.0.0")
+        self.assertEqual(tag, "2.0.0")
 
     def test_first_release_starts_beta_series(self):
         self.assertEqual(next_version(None, [], "Beta", first_release="2.0.0"), "2.0.0-beta.1")
@@ -167,7 +168,6 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, "")
         self.assertTrue(result.stderr.strip())
-
 
     def test_cli_first_release(self):
         out = run_cli("--branch", "main", "--first-release", "2.0.0")

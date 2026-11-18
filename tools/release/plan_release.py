@@ -91,7 +91,8 @@ def plan_tag(repo, labels, base_branch, head_branch, sha, from_fork=False,
         return already
     stable = latest_stable(repo)
     stable_arg = stable[1:] if stable else None
-    normal = next_version(stable_arg, labels, "main", None, first_release)  # validates the labels too
+    # This call validates the labels too.
+    normal = next_version(stable_arg, labels, "main", None, first_release)
     if normal is None:
         return None
 
