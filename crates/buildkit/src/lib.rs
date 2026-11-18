@@ -162,9 +162,18 @@ pub fn build_script_lines(root: &Path, fallback: &str, git: &dyn Git) -> Vec<Str
 /// # Panics
 /// When `CARGO_MANIFEST_DIR` is not set, i.e. outside a build script.
 pub fn emit_version(fallback: Fallback) {
+    emit_version_with(fallback.0);
+}
+
+/// [`emit_version`] with a fallback known only at run time, e.g. read from a
+/// manifest.
+///
+/// # Panics
+/// When `CARGO_MANIFEST_DIR` is not set, i.e. outside a build script.
+pub fn emit_version_with(fallback: &str) {
     let dir = std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set");
     let root = emit_root(Path::new(&dir));
-    for l in build_script_lines(&root, fallback.0, &SystemGit) {
+    for l in build_script_lines(&root, fallback, &SystemGit) {
         println!("{l}");
     }
 }

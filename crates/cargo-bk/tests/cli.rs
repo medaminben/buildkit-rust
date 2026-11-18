@@ -107,3 +107,13 @@ fn repo_setup_accepts_dry_run_and_checks() {
         .code(1)
         .stderr(predicate::str::contains("no Cargo workspace found"));
 }
+
+#[test]
+fn own_fallback_is_the_root_metadata_version() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml");
+    let doc: toml_edit::DocumentMut = fs::read_to_string(manifest).unwrap().parse().unwrap();
+    let version = doc["workspace"]["metadata"]["buildkit"]["version"]
+        .as_str()
+        .unwrap();
+    assert_eq!(env!("BK_FALLBACK"), version);
+}
