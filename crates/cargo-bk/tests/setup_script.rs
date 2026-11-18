@@ -13,6 +13,9 @@ fn generate(dir: &Path) -> String {
         repo: Some("x/foo".to_string()),
         flow: Flow::Direct,
         no_build: true,
+        fixed_guid: None,
+        fixed_year: None,
+        fixed_bk_version: None,
     };
     new_project(dir, &args, &FakeRunner::new()).unwrap();
     let cargo = fs::read_to_string(dir.join("Cargo.toml")).unwrap();

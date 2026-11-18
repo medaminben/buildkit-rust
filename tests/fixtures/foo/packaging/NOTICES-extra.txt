@@ -1,0 +1,2 @@
+Notices that do not come from a Rust crate (fonts, sounds, vendored files) go here.
+`cargo bk package` appends this file to THIRD_PARTY_NOTICES.txt.

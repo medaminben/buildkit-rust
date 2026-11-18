@@ -1,0 +1,305 @@
+# buildkit-rust's own CI: the scripts, the crates, the bootstrap on clean runners, the whole
+# path from `cargo bk new` to installers, and the generated product's CI run on the committed
+# golden fixture (tests/fixtures/foo, kept equal to a fresh `cargo bk new` by golden.rs).
+name: Self-test
+
+on:
+  push:
+    branches: [main, Beta]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Build dependencies of eframe on Linux.
+  BUILD_APT: libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+
+jobs:
+  scripts:
+    name: scripts on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck and bash -n
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(git ls-files '*.sh')
+          for s in "${scripts[@]}"; do bash -n "$s"; done
+          shellcheck "${scripts[@]}"
+      - name: Bootstrap tests (bash)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash bootstrap/tests/test_bootstrap.sh
+      - name: PSScriptAnalyzer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          Invoke-ScriptAnalyzer -Path bootstrap -Recurse -EnableExit
+      - name: Pester
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Install-Module Pester -MinimumVersion 5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          Invoke-Pester bootstrap/tests -CI
+
+  crates:
+    name: crates on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the system packages (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # dpkg-deb is part of the runner image; the rest builds eframe.
+          # shellcheck disable=SC2086
+          sudo apt-get install -y $BUILD_APT dpkg
+      - name: Install Inno Setup (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if [ ! -e "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+            choco install innosetup -y --no-progress
+          fi
+      - name: Install the toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - name: Python unit tests
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tools/release -p 'test_*.py'
+          python -m unittest discover -s tools/manual -p 'test_*.py'
+      - name: cargo test, including the ignored real-build tests
+        run: cargo test --workspace --locked -- --include-ignored
+        env:
+          # The tests that build a generated product read the git identity.
+          GIT_AUTHOR_NAME: CI Bot
+          GIT_AUTHOR_EMAIL: ci@example.invalid
+          GIT_COMMITTER_NAME: CI Bot
+          GIT_COMMITTER_EMAIL: ci@example.invalid
+
+  bootstrap-clean:
+    name: bootstrap on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash bootstrap/bootstrap.sh --yes
+      - name: Bootstrap (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          .\bootstrap\bootstrap.ps1 -Yes
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: A second run installs nothing (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+          bash bootstrap/bootstrap.sh --yes | tee "$RUNNER_TEMP/second.log"
+          if grep -E '^==> (Installing|Updating|Adding)' "$RUNNER_TEMP/second.log"; then
+            echo "::error::the second bootstrap run installed something (lines above)"
+            exit 1
+          fi
+          echo "nothing to install"
+      - name: A second run installs nothing (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'second.log'
+          .\bootstrap\bootstrap.ps1 -Yes *>&1 | Tee-Object -FilePath $log
+          if (Select-String -Path $log -Pattern '^==> (Installing|Adding)') {
+            Write-Output '::error::the second bootstrap run installed something (lines above)'
+            exit 1
+          }
+          Write-Output 'nothing to install'
+      - name: cargo bk doctor
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+          cargo bk doctor --machine
+
+  new-project:
+    name: new project on ${{ matrix.os }}
+    needs: scripts
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the system packages (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # shellcheck disable=SC2086
+          sudo apt-get install -y $BUILD_APT
+      - name: Install Inno Setup (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if [ ! -e "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+            choco install innosetup -y --no-progress
+          fi
+      - name: Install the toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - name: Install cargo-bk from this checkout
+        run: cargo install --path crates/cargo-bk --locked --force
+      - name: Set the git identity and the folder
+        run: |
+          set -euo pipefail
+          git config --global user.name "CI Bot"
+          git config --global user.email "ci@example.invalid"
+          git config --global init.defaultBranch main
+          # One spelling of the path for bash, cargo and git; the folder name has a space.
+          temp="$RUNNER_TEMP"
+          if command -v cygpath >/dev/null; then temp="$(cygpath -m "$RUNNER_TEMP")"; fi
+          mkdir -p "$temp/new project/foo"
+          {
+            echo "FOO=$temp/new project/foo"
+            echo "FOO_CLONE=$temp/new project/foo-clone"
+            echo "BK_CHECKOUT=$GITHUB_WORKSPACE"
+          } >> "$GITHUB_ENV"
+      - name: cargo bk new
+        working-directory: ${{ env.FOO }}
+        # --no-build: the buildkit tag the product pins is not published yet. The fresh clone
+        # below links the product to this checkout before it builds.
+        run: cargo bk new Foo core physics --repo x/foo --no-build
+      - name: Check the generated files
+        working-directory: ${{ env.FOO }}
+        run: |
+          set -euo pipefail
+          for f in Cargo.toml rust-toolchain.toml rustfmt.toml clippy.toml deny.toml .gitignore \
+                   crates/core/src/lib.rs crates/physics/src/lib.rs crates/physics/tests/physics.rs \
+                   apps/foo-console/src/main.rs apps/foo-gui/src/main.rs \
+                   installer/foo.iss packaging/foo.desktop packaging/icon.png \
+                   scripts/setup.sh scripts/setup.ps1 \
+                   docs/ARCHITECTURE.md docs/manual/content/en/index.md \
+                   README.md LICENSE CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md \
+                   .github/workflows/ci.yml .github/workflows/release.yml \
+                   .github/ISSUE_TEMPLATE/bug_report.yml .github/pull_request_template.md; do
+            [ -e "$f" ] || { echo "::error::cargo bk new did not create $f"; exit 1; }
+          done
+          grep -q 'name = "foo-physics"' crates/physics/Cargo.toml \
+            || { echo "::error::crates/physics/Cargo.toml is not foo-physics"; exit 1; }
+          grep -q "Copyright (c) $(date +%Y) x" LICENSE \
+            || { echo "::error::LICENSE holder is not the repo owner"; exit 1; }
+          grep -q "github.com/x/foo/security" SECURITY.md \
+            || { echo "::error::SECURITY.md does not link x/foo"; exit 1; }
+          if grep -rIlE --exclude-dir=build --exclude-dir=.github --exclude=about.hbs \
+               '\{\{(name|kebab|snake|crate|crate_snake|crate_package|app|repo|owner|bk_version|year)\}\}' .; then
+            echo "::error::unfilled placeholders (files above)"; exit 1
+          fi
+      - name: A second run creates nothing
+        working-directory: ${{ env.FOO }}
+        run: |
+          set -euo pipefail
+          cargo bk new Foo core physics --repo x/foo --no-build | tee second.log
+          grep -q 'created 0 files' second.log || { echo "::error::the second run created files"; exit 1; }
+          rm second.log
+      - name: .gitignore keeps build output out of git
+        working-directory: ${{ env.FOO }}
+        run: |
+          set -euo pipefail
+          git init -q
+          git check-ignore -q build/x || { echo "::error::build/ is not ignored"; exit 1; }
+      - name: cargo bk manual
+        working-directory: ${{ env.FOO }}
+        run: |
+          set -euo pipefail
+          cargo bk manual --check
+          cargo bk manual
+          before="$(git ls-files -o --exclude-standard | sort)"
+          cargo bk manual
+          [ "$before" = "$(git ls-files -o --exclude-standard | sort)" ] \
+            || { echo "::error::a second manual run changed the tree"; exit 1; }
+      - name: Commit and clone afresh
+        working-directory: ${{ env.FOO }}
+        run: |
+          set -euo pipefail
+          git add -A
+          git commit -q -m "chore: start foo"
+          git clone -q . "$FOO_CLONE"
+      - name: Link the clone to this checkout, test and run the console
+        working-directory: ${{ env.FOO_CLONE }}
+        run: |
+          set -euo pipefail
+          # The pinned tag is not published yet: point the product at this checkout.
+          cargo bk link --rewrite-dep "$BK_CHECKOUT"
+          cargo generate-lockfile
+          cargo test
+          cargo run -q -p foo-console -- --version | tee version.log
+          grep -q '^foo-console ' version.log
+      - name: cargo bk package
+        working-directory: ${{ env.FOO_CLONE }}
+        run: |
+          set -euo pipefail
+          cargo bk package
+          ls -l build/dist
+          if [ "$RUNNER_OS" = Linux ]; then
+            ls build/dist/*.deb build/dist/*.AppImage
+          else
+            ls build/dist/*Setup*.exe
+          fi
+
+  fixture-ci:
+    name: fixture product CI
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      working-directory: tests/fixtures/foo
+      buildkit-ref: ${{ github.sha }}
+      package: true
+      # The commit lint config belongs to the fixture, not to the pull request's commits.
+      lint-commits: false

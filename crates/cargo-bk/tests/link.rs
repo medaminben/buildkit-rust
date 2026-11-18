@@ -409,6 +409,9 @@ fn rewritten_product_builds_against_the_local_crate() {
         repo: None,
         flow: Flow::Direct,
         no_build: true,
+        fixed_guid: None,
+        fixed_year: None,
+        fixed_bk_version: None,
     };
     new_project(&dir, &a, &FakeRunner::new()).unwrap();
     let checkout = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap();

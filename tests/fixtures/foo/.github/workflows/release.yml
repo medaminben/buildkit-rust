@@ -1,0 +1,15 @@
+name: Release
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  release:
+    uses: medaminben/buildkit-rust/.github/workflows/release.yml@v0.0.0
+    permissions:
+      contents: write
+      actions: write
+    with:
+      installer-workflow: installer.yml

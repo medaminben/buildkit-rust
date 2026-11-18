@@ -1,0 +1,7 @@
+{
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.cargo.targetDir": "build/target",
+  "editor.formatOnSave": true,
+  "[rust]": { "editor.defaultFormatter": "rust-lang.rust-analyzer" },
+  "[toml]": { "editor.defaultFormatter": "tamasfe.even-better-toml" }
+}

@@ -15,6 +15,9 @@ fn generated_product(dir: &Path) {
         repo: None,
         flow: Flow::Direct,
         no_build: true,
+        fixed_guid: None,
+        fixed_year: None,
+        fixed_bk_version: None,
     };
     new_project(dir, &args, &FakeRunner::new()).unwrap();
 }

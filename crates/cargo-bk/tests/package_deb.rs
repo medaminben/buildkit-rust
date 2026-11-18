@@ -231,6 +231,9 @@ fn real_deb_of_a_generated_product() {
         repo: None,
         flow: Flow::Direct,
         no_build: true,
+        fixed_guid: None,
+        fixed_year: None,
+        fixed_bk_version: None,
     };
     new_project(tmp.path(), &args, &SystemRunner).unwrap();
     let mut ws = Workspace::find(tmp.path()).unwrap();

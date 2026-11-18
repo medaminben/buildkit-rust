@@ -68,6 +68,15 @@ pub struct NewArgs {
     /// Skip the first build, test and run.
     #[arg(long)]
     pub no_build: bool,
+    /// Use this installer GUID (golden fixture only).
+    #[arg(long, hide = true, value_name = "guid")]
+    pub fixed_guid: Option<String>,
+    /// Use this year in the licence and notices (golden fixture only).
+    #[arg(long, hide = true, value_name = "year")]
+    pub fixed_year: Option<u64>,
+    /// Use this buildkit-rust version in the pins (golden fixture only).
+    #[arg(long, hide = true, value_name = "x.y.z")]
+    pub fixed_bk_version: Option<String>,
 }
 
 /// The rust-toolchain channel of this repository, the one products start on.
@@ -237,7 +246,19 @@ pub fn new_project(dir: &Path, args: &NewArgs, runner: &dyn Runner) -> Result<Wr
 
     let first = &crates[0];
     let repo = args.repo.clone().unwrap_or_default();
-    let vars = |krate: &CrateName| vars(&product, krate, &repo, args.flow, &rust);
+    let vars = |krate: &CrateName| {
+        let mut v = vars(&product, krate, &repo, args.flow, &rust);
+        if let Some(guid) = &args.fixed_guid {
+            v.0.insert("app_id_guid", format!("{{{guid}}}"));
+        }
+        if let Some(year) = args.fixed_year {
+            v.0.insert("year", year.to_string());
+        }
+        if let Some(version) = &args.fixed_bk_version {
+            v.0.insert("bk_version", version.clone());
+        }
+        v
+    };
     let mut report = write_tree(tree("project")?, dir, &vars(first))?;
     for krate in &crates {
         merge(&mut report, write_tree(tree("crate")?, dir, &vars(krate))?);

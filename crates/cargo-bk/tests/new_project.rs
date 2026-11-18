@@ -11,6 +11,9 @@ fn args(name: Option<&str>, crates: &[&str]) -> NewArgs {
         repo: None,
         flow: Flow::Direct,
         no_build: true,
+        fixed_guid: None,
+        fixed_year: None,
+        fixed_bk_version: None,
     }
 }
 
