@@ -136,36 +136,67 @@ fn setup_sh_passes_shellcheck() {
     );
 }
 
+/// Runs setup.sh for real (no `--dry-run`) with stub tools. `dpkg` reports `libvulkan1` as
+/// missing, `sudo` logs its arguments. Returns the script's output and the sudo log.
 #[cfg(unix)]
-fn apt_get_available() -> bool {
-    Command::new("sh")
-        .args(["-c", "command -v apt-get"])
+fn run_with_missing_package(extra: &[&str]) -> (String, String) {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Stdio;
+    let tmp = tempfile::tempdir().unwrap();
+    let product = tmp.path().join("foo");
+    let pin = generate(&product);
+    let stub_dir = tmp.path().join("stubs");
+    fs::create_dir(&stub_dir).unwrap();
+    stubs(&stub_dir, &pin);
+    let log = tmp.path().join("sudo.log");
+    let write = |name: &str, body: &str| {
+        let p = stub_dir.join(name);
+        fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    write("dpkg", "[ \"$2\" != libvulkan1 ]");
+    write("apt-get", "exit 0");
+    write("sudo", &format!("echo \"$*\" >> '{}'", log.display()));
+    let path = format!(
+        "{}:{}",
+        stub_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let out = Command::new("bash")
+        .arg("scripts/setup.sh")
+        .args(extra)
+        .current_dir(&product)
+        .env("PATH", path)
+        .stdin(Stdio::null())
         .output()
-        .is_ok_and(|o| o.status.success())
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(out.status.success(), "{text}");
+    (text, fs::read_to_string(&log).unwrap_or_default())
 }
 
 #[test]
-fn the_system_deps_step_names_the_products_packages_and_yes_skips_the_prompt() {
+fn missing_system_packages_are_installed_only_with_yes() {
+    if cfg!(not(target_os = "linux")) {
+        eprintln!("skipped: the system package step is Linux only");
+        return;
+    }
     #[cfg(unix)]
     {
-        if !apt_get_available() {
-            eprintln!("skipped: no apt-get on this machine");
-            return;
-        }
-        let (_, out) = dry_run(None);
-        // Either every package is installed, or the missing ones appear in the install line.
-        assert!(out.contains("== 2/4 system packages"), "{out}");
-        let all_present = out.contains("All system packages are installed.");
+        let (out, log) = run_with_missing_package(&[]);
+        assert!(out.contains("Missing: libvulkan1"), "{out}");
+        assert!(out.contains("[y/N]"), "{out}");
+        assert_eq!(log, "", "declined by default, but sudo ran: {log}");
+
+        let (out, log) = run_with_missing_package(&["--yes"]);
+        assert!(!out.contains("[y/N]"), "{out}");
         assert!(
-            all_present || out.contains("+ sudo apt-get install -y "),
-            "{out}"
-        );
-        let (_, yes) = dry_run_with(None, &["--yes"]);
-        assert!(!yes.contains("[y/N]"), "{yes}");
-        assert!(
-            yes.contains("All system packages are installed.")
-                || yes.contains("+ sudo apt-get install -y "),
-            "{yes}"
+            log.contains("apt-get install -y libvulkan1"),
+            "log: {log:?}\n{out}"
         );
     }
 }

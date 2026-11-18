@@ -77,7 +77,8 @@ if [[ "$(uname -s)" == Linux ]] && command -v apt-get >/dev/null 2>&1; then
         if $assume_yes || $dry_run; then
             answer=y
         else
-            read -r -p "Install them with sudo apt-get? [y/N] " answer
+            printf 'Install them with sudo apt-get? [y/N] ' >&2
+            read -r answer || answer=n
         fi
         if [[ "$answer" =~ ^[Yy] ]]; then
             run sudo apt-get install -y "${missing[@]}"
