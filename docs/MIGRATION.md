@@ -1,7 +1,7 @@
 # Migrating from buildkit
 
 This guide is for a product that uses the C++ and CMake [buildkit](https://github.com/medaminben/buildkit)
-and moves to Rust. The first product built on it is the first one. buildkit-rust does not convert C++ code or
+and moves to Rust. Products built on it follow the same path. buildkit-rust does not convert C++ code or
 CMake files: the product is rewritten in Rust, and the build, version, packaging and CI
 conventions carry over. The table below lists every buildkit feature and what replaces it, or
 why it was dropped on purpose.
@@ -134,7 +134,7 @@ so that product's manual has generated screenshots.
 - `cargo bk manual capture` runs the product's capture command headless and writes
   `docs/manual/assets/shots/<lang>/<name>.png`, which `![caption](shot:name)` in a page refers to.
 - The GUI template gets a capture hook that renders the window offscreen.
-- A CI input runs the capture on Linux and Windows, and the self-test covers it.
+- CI runs the capture on Linux and Windows, and the self-test covers it.
 
 Until it ships, put screenshots into `docs/manual/assets/` by hand.
 
