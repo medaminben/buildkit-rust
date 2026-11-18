@@ -1,12 +1,12 @@
 //! `cargo bk link` and `unlink`: point a product at a local buildkit-rust checkout.
 
+use super::REPO_URL;
 use crate::workspace::Workspace;
 use anyhow::{Context, Result, anyhow, bail};
 use std::path::{Path, PathBuf};
 use toml_edit::{InlineTable, Item, Value};
 
-const GIT_URL: &str = "https://github.com/medaminben/buildkit-rust";
-const MARK_START: &str = "# >>> cargo bk link";
+pub(crate) const MARK_START: &str = "# >>> cargo bk link";
 const MARK_END: &str = "# <<< cargo bk link";
 /// The default checkout, next to the product.
 pub const DEFAULT_CHECKOUT: &str = "../buildkit-rust";
@@ -116,9 +116,13 @@ pub fn link(product: &Path, checkout: &Path, home: Option<&Path>, force: bool) -
     let existing: toml_edit::DocumentMut = text
         .parse()
         .with_context(|| format!("cannot parse {}", file.display()))?;
-    if existing.get("patch").and_then(|p| p.get(GIT_URL)).is_some() {
+    if existing
+        .get("patch")
+        .and_then(|p| p.get(REPO_URL))
+        .is_some()
+    {
         bail!(
-            "{} already has [patch.\"{GIT_URL}\"]; remove or merge it by hand",
+            "{} already has [patch.\"{REPO_URL}\"]; remove or merge it by hand",
             file.display()
         );
     }
@@ -132,7 +136,7 @@ pub fn link(product: &Path, checkout: &Path, home: Option<&Path>, force: bool) -
         String::new()
     };
     let block = format!(
-        "{MARK_START} (remove with cargo bk unlink{note})\n[patch.\"{GIT_URL}\"]\nbuildkit = {{ path = \"{abs}/crates/buildkit\" }}\n{MARK_END}\n"
+        "{MARK_START} (remove with cargo bk unlink{note})\n[patch.\"{REPO_URL}\"]\nbuildkit = {{ path = \"{abs}/crates/buildkit\" }}\n{MARK_END}\n"
     );
     text.push_str(&block);
     text.parse::<toml_edit::DocumentMut>()
@@ -172,12 +176,10 @@ fn set_dep(ws: &mut Workspace, edit: impl FnOnce(&mut InlineTable)) -> Result<()
         .get_mut("workspace")
         .and_then(|w| w.get_mut("dependencies"))
         .and_then(|d| d.get_mut("buildkit"))
+        .filter(|i| !i.is_none())
     else {
         bail!("buildkit dependency is missing from [workspace.dependencies]");
     };
-    if item.is_none() {
-        bail!("buildkit dependency is missing from [workspace.dependencies]");
-    }
     let Item::Value(Value::InlineTable(table)) = item else {
         bail!("buildkit dependency is not an inline table; edit it by hand");
     };
@@ -209,7 +211,7 @@ pub fn restore_dep(ws: &mut Workspace) -> Result<()> {
         .bk_version()
         .ok_or_else(|| anyhow!("[workspace.metadata.buildkit] version is missing"))?;
     set_dep(ws, |t| {
-        t.insert("git", Value::from(GIT_URL));
+        t.insert("git", Value::from(REPO_URL));
         t.insert("tag", Value::from(format!("v{version}")));
     })
 }

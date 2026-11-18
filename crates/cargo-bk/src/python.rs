@@ -6,15 +6,6 @@ use anyhow::{Result, bail};
 
 const MIN_MINOR: u32 = 11;
 
-fn candidate(program: &str, pre: &[&str]) -> Cmd {
-    Cmd {
-        program: program.to_string(),
-        args: pre.iter().map(|s| (*s).to_string()).collect(),
-        cwd: None,
-        env: vec![],
-    }
-}
-
 /// Parses `Python 3.x.y` and returns the minor version of a Python 3.
 fn minor_version(text: &str) -> Option<u32> {
     let rest = text.split("Python 3.").nth(1)?;
@@ -27,9 +18,9 @@ fn minor_version(text: &str) -> Option<u32> {
 /// # Errors
 /// When none qualifies.
 pub fn find_python(r: &dyn Runner, os: Os) -> Result<Cmd> {
-    let mut candidates = vec![candidate("python3", &[]), candidate("python", &[])];
+    let mut candidates = vec![Cmd::new("python3", &[]), Cmd::new("python", &[])];
     if os == Os::Windows {
-        candidates.push(candidate("py", &["-3"]));
+        candidates.push(Cmd::new("py", &["-3"]));
     }
     for cmd in candidates {
         let mut probe = cmd.clone();

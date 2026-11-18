@@ -49,19 +49,9 @@ struct Ctx {
     rust: String,
 }
 
-fn setting(ws: &Workspace, key: &str) -> Option<String> {
-    ws.doc
-        .get("workspace")?
-        .get("metadata")?
-        .get("buildkit")?
-        .get(key)?
-        .as_str()
-        .map(str::to_string)
-}
-
 fn context(ws: &Workspace) -> Result<Ctx> {
     let product = ProductName::parse(&ws.package_meta()?.display_name)?;
-    let flow = match setting(ws, "flow") {
+    let flow = match ws.bk_flow() {
         Some(f) => Flow::from_str(&f, true).map_err(|_| {
             anyhow::anyhow!("[workspace.metadata.buildkit] flow {f:?} is not direct or beta")
         })?,
@@ -69,7 +59,7 @@ fn context(ws: &Workspace) -> Result<Ctx> {
     };
     Ok(Ctx {
         product,
-        repo: setting(ws, "repo").unwrap_or_default(),
+        repo: ws.repo(),
         flow,
         rust: rust_version()?,
     })

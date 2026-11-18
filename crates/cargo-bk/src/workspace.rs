@@ -26,6 +26,19 @@ impl Workspace {
     /// # Errors
     /// When there is none, or a manifest cannot be read or parsed.
     pub fn find(start: &Path) -> Result<Workspace> {
+        Self::try_find(start)?.ok_or_else(|| {
+            anyhow!(
+                "no Cargo workspace found from {}; run cargo bk inside a product",
+                start.display()
+            )
+        })
+    }
+
+    /// Like [`Workspace::find`], but `None` when there is no workspace.
+    ///
+    /// # Errors
+    /// When a manifest cannot be read or parsed.
+    pub fn try_find(start: &Path) -> Result<Option<Workspace>> {
         for dir in start.ancestors() {
             let manifest = dir.join("Cargo.toml");
             if !manifest.is_file() {
@@ -37,34 +50,31 @@ impl Workspace {
                 .parse()
                 .with_context(|| format!("cannot parse {}", manifest.display()))?;
             if doc.contains_key("workspace") {
-                return Ok(Workspace {
+                return Ok(Some(Workspace {
                     root: dir.to_path_buf(),
                     doc,
-                });
+                }));
             }
         }
-        bail!(
-            "no Cargo workspace found from {}; run cargo bk inside a product",
-            start.display()
-        )
+        Ok(None)
     }
 
     /// `[workspace.metadata.buildkit].version`.
     #[must_use]
     pub fn bk_version(&self) -> Option<String> {
-        self.metadata()?
-            .get("buildkit")?
-            .get("version")?
-            .as_str()
-            .map(str::to_string)
+        self.buildkit_str("version")
     }
 
     /// `[workspace.metadata.buildkit].flow`.
     #[must_use]
     pub fn bk_flow(&self) -> Option<String> {
+        self.buildkit_str("flow")
+    }
+
+    fn buildkit_str(&self, key: &str) -> Option<String> {
         self.metadata()?
             .get("buildkit")?
-            .get("flow")?
+            .get(key)?
             .as_str()
             .map(str::to_string)
     }
@@ -121,12 +131,7 @@ impl Workspace {
     /// `[workspace.metadata.buildkit] repo` as `owner/repo`; empty when unset.
     #[must_use]
     pub fn repo(&self) -> String {
-        self.metadata()
-            .and_then(|m| m.get("buildkit"))
-            .and_then(|b| b.get("repo"))
-            .and_then(Item::as_str)
-            .unwrap_or_default()
-            .to_string()
+        self.buildkit_str("repo").unwrap_or_default()
     }
 
     /// Writes the manifest back, keeping its formatting.
@@ -137,6 +142,13 @@ impl Workspace {
         let path = self.root.join("Cargo.toml");
         std::fs::write(&path, self.doc.to_string())
             .with_context(|| format!("cannot write {}", path.display()))
+    }
+
+    /// [`Workspace::root_package_version`], else `0.0.0`.
+    #[must_use]
+    pub fn fallback_version(&self) -> String {
+        self.root_package_version()
+            .unwrap_or_else(|| "0.0.0".to_string())
     }
 
     /// The root manifest's `[package] version`, else its
@@ -150,6 +162,16 @@ impl Workspace {
             .flatten()
             .find_map(|t| t.get("version")?.as_str().map(str::to_string))
     }
+}
+
+/// The `[toolchain] channel` of a `rust-toolchain.toml`.
+#[must_use]
+pub fn toolchain_channel(text: &str) -> Option<String> {
+    let doc: DocumentMut = text.parse().ok()?;
+    doc.get("toolchain")?
+        .get("channel")?
+        .as_str()
+        .map(str::to_string)
 }
 
 #[cfg(test)]

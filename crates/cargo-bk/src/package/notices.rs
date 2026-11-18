@@ -11,14 +11,13 @@ use anyhow::{Context, Result, bail};
 /// When cargo-about cannot run or fails, or the extra file cannot be read.
 pub fn notices(ws: &Workspace, r: &dyn Runner) -> Result<String> {
     let out = r
-        .run(&Cmd {
-            program: "cargo".into(),
-            args: ["about", "generate", "--config", "about.toml", "about.hbs"]
-                .map(String::from)
-                .to_vec(),
-            cwd: Some(ws.root.clone()),
-            env: Vec::new(),
-        })
+        .run(
+            &Cmd::new(
+                "cargo",
+                &["about", "generate", "--config", "about.toml", "about.hbs"],
+            )
+            .cwd(&ws.root),
+        )
         .context("cannot run cargo; install cargo-about with `cargo install cargo-about`")?;
     if out.status != 0 {
         let err = out.stderr.trim();

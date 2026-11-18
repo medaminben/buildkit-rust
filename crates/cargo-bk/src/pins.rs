@@ -1,6 +1,6 @@
 //! Where a product pins buildkit-rust, and how to keep those pins in step.
 
-use crate::commands::OWN_VERSION;
+use crate::commands::{OWN_VERSION, REPO_URL};
 use crate::templates::{TEMPLATES, Vars, render};
 use crate::workspace::Workspace;
 use anyhow::{Context, Result, bail};
@@ -181,35 +181,27 @@ pub fn find_pins(ws: &Workspace) -> Result<Vec<Pin>> {
         });
     }
     for file in workflow_files(&ws.root) {
-        let text = std::fs::read_to_string(&file)
-            .with_context(|| format!("cannot read {}", file.display()))?;
-        for (i, line) in text.lines().enumerate() {
-            if let Some((a, b)) = workflow_version_range(line) {
-                pins.push(Pin {
-                    site: PinSite::Workflow {
-                        file: file.clone(),
-                        line: i + 1,
-                    },
-                    version: line[a..b].to_string(),
-                });
-            }
-        }
+        scan_lines(
+            &file,
+            |l| workflow_version_range(l).into_iter().collect(),
+            |line| PinSite::Workflow {
+                file: file.clone(),
+                line,
+            },
+            &mut pins,
+        )?;
     }
     if is_buildkit_rust(&ws.root) {
         for file in doc_files(&ws.root) {
-            let text = std::fs::read_to_string(&file)
-                .with_context(|| format!("cannot read {}", file.display()))?;
-            for (i, line) in text.lines().enumerate() {
-                for (a, b) in doc_version_ranges(line) {
-                    pins.push(Pin {
-                        site: PinSite::Doc {
-                            file: file.clone(),
-                            line: i + 1,
-                        },
-                        version: line[a..b].to_string(),
-                    });
-                }
-            }
+            scan_lines(
+                &file,
+                doc_version_ranges,
+                |line| PinSite::Doc {
+                    file: file.clone(),
+                    line,
+                },
+                &mut pins,
+            )?;
         }
     }
     for name in LINT_FILES {
@@ -227,6 +219,26 @@ pub fn find_pins(ws: &Workspace) -> Result<Vec<Pin>> {
     Ok(pins)
 }
 
+/// Pushes a pin for every version range `ranges` finds in a line of `file`.
+fn scan_lines(
+    file: &Path,
+    ranges: impl Fn(&str) -> Vec<(usize, usize)>,
+    site: impl Fn(usize) -> PinSite,
+    pins: &mut Vec<Pin>,
+) -> Result<()> {
+    let text =
+        std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
+    for (i, line) in text.lines().enumerate() {
+        for (a, b) in ranges(line) {
+            pins.push(Pin {
+                site: site(i + 1),
+                version: line[a..b].to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// The pins that differ from the metadata pin. Empty when there is no metadata pin.
 #[must_use]
 pub fn mismatches(pins: &[Pin]) -> Vec<&Pin> {
@@ -241,11 +253,7 @@ pub fn mismatches(pins: &[Pin]) -> Vec<&Pin> {
 /// The embedded copy of a rendered lint file for `version`.
 fn render_lint(name: &str, version: &str) -> Result<String> {
     let vars = Vars(BTreeMap::from([("bk_version", version.to_string())]));
-    let template = TEMPLATES
-        .get_file(format!("project/{name}.tmpl"))
-        .and_then(|f| f.contents_utf8())
-        .with_context(|| format!("embedded template for {name} is missing"))?;
-    render(template, &vars)
+    render(embedded_plain(&format!("project/{name}.tmpl"))?, &vars)
 }
 
 fn embedded_plain(path: &str) -> Result<&'static str> {
@@ -299,6 +307,11 @@ fn write_if_changed(path: &Path, old: &str, new: &str, changed: &mut Vec<PathBuf
     Ok(())
 }
 
+fn replace_keeping_decor(old: &mut Value, mut new: Value) {
+    *new.decor_mut() = old.decor().clone();
+    *old = new;
+}
+
 fn set_metadata_version(ws: &mut Workspace, version: &str) -> Result<()> {
     let Some(Item::Value(old)) = ws
         .doc
@@ -309,9 +322,7 @@ fn set_metadata_version(ws: &mut Workspace, version: &str) -> Result<()> {
     else {
         bail!("[workspace.metadata.buildkit] version is missing");
     };
-    let mut new = Value::from(version);
-    *new.decor_mut() = old.decor().clone();
-    *old = new;
+    replace_keeping_decor(old, Value::from(version));
     Ok(())
 }
 
@@ -325,9 +336,7 @@ fn set_tag(ws: &mut Workspace, version: &str) {
     else {
         return;
     };
-    let mut new = Value::from(format!("v{version}"));
-    *new.decor_mut() = old.decor().clone();
-    *old = new;
+    replace_keeping_decor(old, Value::from(format!("v{version}")));
 }
 
 /// Moves every pin to `version`, which must be the running cargo-bk version.
@@ -339,7 +348,7 @@ pub fn upgrade(ws: &mut Workspace, version: &str) -> Result<Vec<PathBuf>> {
     let version = version.trim_start_matches('v');
     if version != OWN_VERSION {
         bail!(
-            "install cargo-bk v{version} first: cargo install --git https://github.com/medaminben/buildkit-rust --tag v{version} cargo-bk"
+            "install cargo-bk v{version} first: cargo install --git {REPO_URL} --tag v{version} cargo-bk"
         );
     }
     let mut changed = Vec::new();

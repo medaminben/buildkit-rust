@@ -1,10 +1,10 @@
 //! The `AppImage` format.
 
-use super::{PackageCtx, copy_tree};
+use super::{PackageCtx, copy_file, copy_tree, ensure_parent};
 use crate::exec::{Cmd, Runner};
+use crate::names::file_stem;
 use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
-use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -14,10 +14,12 @@ pub const APPIMAGETOOL_URL: &str =
 pub const APPIMAGETOOL_SHA256: &str =
     "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0";
 
-/// Builds `<out>/<Display-name>-<version>-x86_64.AppImage` from `stage`. The
-/// `AppDir` is assembled in `<root>/build/appdir`; the whole stage goes to
-/// `usr/bin/`, so files sit next to the executables as in the Windows install. appimagetool comes from
-/// `PATH`, else it is downloaded to `<root>/build/tools` and verified.
+/// Builds `<out>/<Display-name>-<version>-x86_64.AppImage` from `stage`.
+///
+/// The `AppDir` is assembled in `<root>/build/appdir`; the whole stage goes to `usr/bin/`, so
+/// files sit next to the executables as in the Windows install.
+///
+/// appimagetool comes from `PATH`, else it is downloaded to `<root>/build/tools` and verified.
 ///
 /// # Errors
 /// When a file is missing, a file operation fails, the tool cannot be
@@ -42,11 +44,11 @@ pub fn build_appimage(ctx: &PackageCtx, r: &dyn Runner) -> Result<PathBuf> {
     for app in &meta.apps {
         make_executable(&bin.join(app))?;
     }
-    copy(
+    copy_file(
         &root.join(&meta.desktop),
         &appdir.join(format!("{kebab}.desktop")),
     )?;
-    copy(&root.join(&meta.icon), &appdir.join(format!("{kebab}.png")))?;
+    copy_file(&root.join(&meta.icon), &appdir.join(format!("{kebab}.png")))?;
     link_app_run(&appdir, &meta.main_app)?;
 
     let tool = if let Some(p) = r.which("appimagetool") {
@@ -61,17 +63,16 @@ pub fn build_appimage(ctx: &PackageCtx, r: &dyn Runner) -> Result<PathBuf> {
     };
 
     fs::create_dir_all(out).with_context(|| format!("cannot create {}", out.display()))?;
-    let name = meta.display_name.replace(' ', "-");
+    let name = file_stem(&meta.display_name);
     let image = out.join(format!("{name}-{}-x86_64.AppImage", ctx.version.full));
-    let res = r.run(&Cmd {
-        program: tool.display().to_string(),
-        args: vec![appdir.display().to_string(), image.display().to_string()],
-        cwd: Some(root.to_path_buf()),
-        env: vec![
-            ("APPIMAGE_EXTRACT_AND_RUN".into(), "1".into()),
-            ("ARCH".into(), "x86_64".into()),
-        ],
-    })?;
+    let res = r.run(
+        &Cmd::new(
+            &tool.display().to_string(),
+            &[&appdir.display().to_string(), &image.display().to_string()],
+        )
+        .cwd(root)
+        .env(&[("APPIMAGE_EXTRACT_AND_RUN", "1"), ("ARCH", "x86_64")]),
+    )?;
     if res.status != 0 {
         bail!("appimagetool failed: {}", res.stderr.trim());
     }
@@ -84,21 +85,11 @@ pub fn build_appimage(ctx: &PackageCtx, r: &dyn Runner) -> Result<PathBuf> {
 /// # Errors
 /// When curl fails or the hash differs.
 pub fn fetch_tool(r: &dyn Runner, dest: &Path, url: &str, sha256: &str) -> Result<()> {
-    if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("cannot create {}", parent.display()))?;
-    }
-    let res = r.run(&Cmd {
-        program: "curl".into(),
-        args: vec![
-            "-fsSL".into(),
-            "-o".into(),
-            dest.display().to_string(),
-            url.into(),
-        ],
-        cwd: None,
-        env: Vec::new(),
-    })?;
+    ensure_parent(dest)?;
+    let res = r.run(&Cmd::new(
+        "curl",
+        &["-fsSL", "-o", &dest.display().to_string(), url],
+    ))?;
     if res.status != 0 {
         bail!("download of {url} failed: {}", res.stderr.trim());
     }
@@ -110,19 +101,8 @@ pub fn fetch_tool(r: &dyn Runner, dest: &Path, url: &str, sha256: &str) -> Resul
 }
 
 fn has_sha256(path: &Path, expected: &str) -> bool {
-    fs::read(path).is_ok_and(|data| {
-        let mut hex = String::new();
-        for b in Sha256::digest(&data) {
-            let _ = write!(hex, "{b:02x}");
-        }
-        hex.eq_ignore_ascii_case(expected)
-    })
-}
-
-fn copy(src: &Path, dest: &Path) -> Result<()> {
-    fs::copy(src, dest)
-        .with_context(|| format!("cannot copy {} to {}", src.display(), dest.display()))?;
-    Ok(())
+    fs::read(path)
+        .is_ok_and(|data| format!("{:x}", Sha256::digest(&data)).eq_ignore_ascii_case(expected))
 }
 
 #[cfg(unix)]

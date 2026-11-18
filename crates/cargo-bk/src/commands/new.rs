@@ -12,8 +12,9 @@ use clap::{Args, ValueEnum};
 use super::OWN_VERSION;
 use crate::docs_rows::{add_layout_row, app_row, crate_row};
 use crate::exec::{Cmd, Runner};
-use crate::names::{CrateName, ProductName};
+use crate::names::{CrateName, ProductName, file_stem};
 use crate::templates::{TEMPLATES, Vars, WriteReport, write_tree};
+use crate::workspace::toolchain_channel;
 
 /// How changes reach the default branch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -81,10 +82,7 @@ pub struct NewArgs {
 
 /// The rust-toolchain channel of this repository, the one products start on.
 pub(crate) fn rust_version() -> Result<String> {
-    let doc: toml_edit::DocumentMut = include_str!("../../../../rust-toolchain.toml").parse()?;
-    doc["toolchain"]["channel"]
-        .as_str()
-        .map(str::to_string)
+    toolchain_channel(include_str!("../../../../rust-toolchain.toml"))
         .context("rust-toolchain.toml has no channel")
 }
 
@@ -168,8 +166,7 @@ pub(crate) fn vars(
     let entries = [
         ("name", product.display.clone()),
         ("kebab", product.kebab.clone()),
-        // The installer file name stem; `cargo bk package` builds the same one.
-        ("name_file", product.display.replace(' ', "-")),
+        ("name_file", file_stem(&product.display)),
         ("snake", product.snake.clone()),
         ("crate", krate.dir.clone()),
         ("crate_snake", krate.snake.clone()),
@@ -195,13 +192,7 @@ pub(crate) fn merge(into: &mut WriteReport, from: WriteReport) {
 }
 
 fn cargo(runner: &dyn Runner, dir: &Path, args: &[&str]) -> Result<()> {
-    let cmd = Cmd {
-        program: "cargo".to_string(),
-        args: args.iter().map(|a| (*a).to_string()).collect(),
-        cwd: Some(dir.to_path_buf()),
-        env: Vec::new(),
-    };
-    let out = runner.run(&cmd)?;
+    let out = runner.run(&Cmd::new("cargo", args).cwd(dir))?;
     if out.status != 0 {
         bail!("`cargo {}` failed:\n{}", args.join(" "), out.stderr);
     }
@@ -209,16 +200,16 @@ fn cargo(runner: &dyn Runner, dir: &Path, args: &[&str]) -> Result<()> {
 }
 
 /// Fills the layout tables of README.md and ARCHITECTURE.md with the crates and both apps.
-fn layout_rows(dir: &Path, product: &ProductName, crates: &[CrateName]) -> Result<()> {
+fn layout_rows(
+    dir: &Path,
+    product: &ProductName,
+    crates: &[CrateName],
+    gui_app: &str,
+    console_app: &str,
+) -> Result<()> {
     let mut rows: Vec<String> = crates.iter().map(|c| crate_row(product, c)).collect();
-    rows.push(app_row(
-        &format!("{}-gui", product.kebab),
-        "the desktop app.",
-    ));
-    rows.push(app_row(
-        &format!("{}-console", product.kebab),
-        "the command-line app.",
-    ));
+    rows.push(app_row(gui_app, "the desktop app."));
+    rows.push(app_row(console_app, "the command-line app."));
     for row in &rows {
         for note in add_layout_row(dir, row)? {
             println!("{note}");
@@ -245,6 +236,8 @@ pub fn new_project(dir: &Path, args: &NewArgs, runner: &dyn Runner) -> Result<Wr
     };
 
     let first = &crates[0];
+    let console_app = format!("{}-console", product.kebab);
+    let gui_app = format!("{}-gui", product.kebab);
     let repo = args.repo.clone().unwrap_or_default();
     let vars = |krate: &CrateName| {
         let mut v = vars(&product, krate, &repo, args.flow, &rust);
@@ -268,7 +261,7 @@ pub fn new_project(dir: &Path, args: &NewArgs, runner: &dyn Runner) -> Result<Wr
         write_tree(tree("app-console")?, dir, &vars(first))?,
     );
     let mut gui_vars = vars(first);
-    gui_vars.0.insert("app", format!("{}-gui", product.kebab));
+    gui_vars.0.insert("app", gui_app.clone());
     merge(&mut report, write_tree(tree("app-gui")?, dir, &gui_vars)?);
     if args.repo.is_some() {
         merge(
@@ -277,13 +270,12 @@ pub fn new_project(dir: &Path, args: &NewArgs, runner: &dyn Runner) -> Result<Wr
         );
     }
 
-    layout_rows(dir, &product, &crates)?;
+    layout_rows(dir, &product, &crates, &gui_app, &console_app)?;
 
     if !args.no_build {
         cargo(runner, dir, &["build"])?;
         cargo(runner, dir, &["test"])?;
-        let app = format!("{}-console", product.kebab);
-        cargo(runner, dir, &["run", "-p", &app])?;
+        cargo(runner, dir, &["run", "-p", &console_app])?;
     }
     Ok(report)
 }

@@ -54,6 +54,29 @@ pub fn formats_for(requested: Option<&str>, os: Os) -> Result<Vec<Format>> {
     }
 }
 
+/// Creates the parent directory of `path`, if it has one.
+///
+/// # Errors
+/// When the directory cannot be created.
+pub fn ensure_parent(path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("cannot create {}", parent.display()))?;
+    }
+    Ok(())
+}
+
+/// Copies `src` to `dest`, creating the parent directory of `dest`.
+///
+/// # Errors
+/// When the directory cannot be created or the file cannot be copied.
+pub fn copy_file(src: &Path, dest: &Path) -> Result<()> {
+    ensure_parent(dest)?;
+    std::fs::copy(src, dest)
+        .with_context(|| format!("cannot copy {} to {}", src.display(), dest.display()))?;
+    Ok(())
+}
+
 /// Copies every file under `src` to the same relative path under `dest`.
 ///
 /// # Errors

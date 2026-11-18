@@ -1,15 +1,17 @@
 //! `cargo bk doctor`: checks the machine and the product against what they need.
 
+use super::REPO_URL;
+use super::link::MARK_START;
 use crate::exec::{Cmd, Runner};
 use crate::os::Os;
 use crate::package::inno::find_iscc;
 use crate::python::find_python;
-use crate::workspace::Workspace;
+use crate::workspace::{Workspace, toolchain_channel};
 use anyhow::{Result, bail};
+use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
-const REPO_URL: &str = "https://github.com/medaminben/buildkit-rust";
 const VSWHERE_TAIL: &str = "Microsoft Visual Studio/Installer/vswhere.exe";
 const VSWHERE_DEFAULT_BASE: &str = "C:/Program Files (x86)";
 
@@ -20,9 +22,19 @@ pub enum Status {
     WrongVersion { want: String, got: String },
 }
 
+impl Status {
+    fn from_found(found: bool) -> Self {
+        if found {
+            Status::Ok("installed".into())
+        } else {
+            Status::Missing
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Check {
-    pub name: &'static str,
+    pub name: Cow<'static, str>,
     pub required: bool,
     pub status: Status,
     pub fix: String,
@@ -32,18 +44,9 @@ fn bootstrap(group: &str) -> String {
     format!("run bootstrap (group {group})")
 }
 
-fn cmd(program: &str, args: &[&str]) -> Cmd {
-    Cmd {
-        program: program.to_string(),
-        args: args.iter().map(|a| (*a).to_string()).collect(),
-        cwd: None,
-        env: vec![],
-    }
-}
-
 /// First line of `program args`, when it exits 0.
 fn first_line(r: &dyn Runner, program: &str, args: &[&str]) -> Option<String> {
-    let out = r.run(&cmd(program, args)).ok()?;
+    let out = r.run(&Cmd::new(program, args)).ok()?;
     if out.status != 0 {
         return None;
     }
@@ -54,9 +57,19 @@ fn status_of(found: Option<String>) -> Status {
     found.map_or(Status::Missing, Status::Ok)
 }
 
-fn push(checks: &mut Vec<Check>, name: &'static str, required: bool, status: Status, fix: String) {
+fn on_path(r: &dyn Runner, name: &str) -> Option<String> {
+    r.which(name).map(|p| p.display().to_string())
+}
+
+fn push(
+    checks: &mut Vec<Check>,
+    name: impl Into<Cow<'static, str>>,
+    required: bool,
+    status: Status,
+    fix: String,
+) {
     checks.push(Check {
-        name,
+        name: name.into(),
         required,
         status,
         fix,
@@ -64,13 +77,9 @@ fn push(checks: &mut Vec<Check>, name: &'static str, required: bool, status: Sta
 }
 
 /// The `channel` of `rust-toolchain.toml`, when the product has one.
-fn toolchain_channel(ws: &Workspace) -> Option<String> {
+fn product_channel(ws: &Workspace) -> Option<String> {
     let text = std::fs::read_to_string(ws.root.join("rust-toolchain.toml")).ok()?;
-    let doc: toml_edit::DocumentMut = text.parse().ok()?;
-    doc.get("toolchain")?
-        .get("channel")?
-        .as_str()
-        .map(str::to_string)
+    toolchain_channel(&text)
 }
 
 fn rustc_check(ws: Option<&Workspace>, r: &dyn Runner) -> (Status, String) {
@@ -78,7 +87,7 @@ fn rustc_check(ws: Option<&Workspace>, r: &dyn Runner) -> (Status, String) {
         return (Status::Missing, bootstrap("rust"));
     };
     let want = ws
-        .and_then(toolchain_channel)
+        .and_then(product_channel)
         .filter(|c| c.starts_with(|ch: char| ch.is_ascii_digit()));
     match want {
         Some(want) if !line.starts_with(&format!("rustc {want}")) => {
@@ -131,7 +140,7 @@ fn msvc_check(r: &dyn Runner) -> Status {
 }
 
 fn apt_installed(r: &dyn Runner, pkg: &str) -> bool {
-    r.run(&cmd("dpkg-query", &["-W", "-f=${Status}", pkg]))
+    r.run(&Cmd::new("dpkg-query", &["-W", "-f=${Status}", pkg]))
         .is_ok_and(|o| o.status == 0 && o.stdout.contains("install ok installed"))
 }
 
@@ -139,10 +148,8 @@ fn link_active(ws: &Workspace) -> bool {
     let Some(parent) = ws.root.parent() else {
         return false;
     };
-    std::fs::read_to_string(parent.join(".cargo/config.toml")).is_ok_and(|t| {
-        t.lines()
-            .any(|l| l.trim().starts_with("# >>> cargo bk link"))
-    })
+    std::fs::read_to_string(parent.join(".cargo/config.toml"))
+        .is_ok_and(|t| t.lines().any(|l| l.trim().starts_with(MARK_START)))
 }
 
 /// Runs every check. `ws` is the product, or `None` for a machine-only check.
@@ -181,11 +188,7 @@ pub fn run_checks(ws: Option<&Workspace>, r: &dyn Runner, os: Os) -> Vec<Check> 
         bootstrap("node"),
     );
     if let Some(ws) = ws {
-        let status = if ws.root.join(".husky/_").is_dir() {
-            Status::Ok("installed".into())
-        } else {
-            Status::Missing
-        };
+        let status = Status::from_found(ws.root.join(".husky/_").is_dir());
         push(&mut c, "husky", true, status, "run npm install".into());
     }
     let python = find_python(r, os).ok().map(|p| p.program);
@@ -196,8 +199,13 @@ pub fn run_checks(ws: Option<&Workspace>, r: &dyn Runner, os: Os) -> Vec<Check> 
         status_of(python),
         bootstrap("python"),
     );
-    let gh = r.which("gh").map(|p| p.display().to_string());
-    push(&mut c, "gh", false, status_of(gh), bootstrap("github"));
+    push(
+        &mut c,
+        "gh",
+        false,
+        status_of(on_path(r, "gh")),
+        bootstrap("github"),
+    );
     match os {
         Os::Linux => linux_checks(&mut c, ws, r),
         Os::Windows => windows_checks(&mut c, r),
@@ -218,19 +226,20 @@ pub fn run_checks(ws: Option<&Workspace>, r: &dyn Runner, os: Os) -> Vec<Check> 
 
 fn linux_checks(c: &mut Vec<Check>, ws: Option<&Workspace>, r: &dyn Runner) {
     for name in ["dpkg-deb", "appimagetool"] {
-        let found = r.which(name).map(|p| p.display().to_string());
-        push(c, name, true, status_of(found), bootstrap("packaging"));
+        push(
+            c,
+            name,
+            true,
+            status_of(on_path(r, name)),
+            bootstrap("packaging"),
+        );
     }
     let Some(ws) = ws else { return };
     let Ok(meta) = ws.package_meta() else { return };
     for pkg in meta.system_deps_apt {
-        let name: &'static str = Box::leak(pkg.clone().into_boxed_str());
-        let status = if apt_installed(r, &pkg) {
-            Status::Ok("installed".into())
-        } else {
-            Status::Missing
-        };
-        push(c, name, true, status, format!("sudo apt-get install {pkg}"));
+        let status = Status::from_found(apt_installed(r, &pkg));
+        let fix = format!("sudo apt-get install {pkg}");
+        push(c, pkg, true, status, fix);
     }
 }
 

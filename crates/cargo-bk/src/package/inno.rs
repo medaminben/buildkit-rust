@@ -2,6 +2,7 @@
 
 use super::PackageCtx;
 use crate::exec::{Cmd, Runner};
+use crate::names::file_stem;
 use anyhow::{Context, Result, bail};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -69,21 +70,18 @@ pub fn build_inno(
 ) -> Result<Vec<PathBuf>> {
     let iscc = find_iscc(r, env)?;
     fs::create_dir_all(ctx.out).with_context(|| format!("cannot create {}", ctx.out.display()))?;
-    let name = ctx.meta.display_name.replace(' ', "-");
+    let name = file_stem(&ctx.meta.display_name);
     let full = &ctx.version.full;
-    let res = r.run(&Cmd {
-        program: iscc.display().to_string(),
-        args: iscc_args(
-            &ctx.root.join(&ctx.meta.iss),
-            ctx.stage,
-            ctx.out,
-            full,
-            &ctx.version.numeric,
-            &name,
-        ),
-        cwd: Some(ctx.root.to_path_buf()),
-        env: Vec::new(),
-    })?;
+    let mut cmd = Cmd::new(&iscc.display().to_string(), &[]).cwd(ctx.root);
+    cmd.args = iscc_args(
+        &ctx.root.join(&ctx.meta.iss),
+        ctx.stage,
+        ctx.out,
+        full,
+        &ctx.version.numeric,
+        &name,
+    );
+    let res = r.run(&cmd)?;
     if res.status != 0 {
         // ISCC writes most diagnostics to stdout.
         let detail = if res.stderr.trim().is_empty() {

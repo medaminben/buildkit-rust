@@ -11,8 +11,5 @@ use std::path::Path;
 /// When `cwd` is not inside a product workspace.
 pub fn run(cwd: &Path) -> Result<String> {
     let ws = open_workspace(cwd)?;
-    let fallback = ws
-        .root_package_version()
-        .unwrap_or_else(|| "0.0.0".to_string());
-    Ok(buildkit::resolve(&ws.root, &fallback, &SystemGit).full)
+    Ok(buildkit::resolve(&ws.root, &ws.fallback_version(), &SystemGit).full)
 }

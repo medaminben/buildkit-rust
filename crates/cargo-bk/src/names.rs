@@ -33,6 +33,12 @@ impl ProductName {
     }
 }
 
+/// The product's display name as a file name stem: spaces become `-`.
+#[must_use]
+pub fn file_stem(display: &str) -> String {
+    display.replace(' ', "-")
+}
+
 const RULE: &str = "ASCII letters, digits, space, - or _; must start with a letter";
 
 fn check(s: &str) -> Result<(), NameError> {

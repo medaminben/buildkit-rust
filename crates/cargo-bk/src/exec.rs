@@ -13,6 +13,33 @@ pub struct Cmd {
     pub env: Vec<(String, String)>,
 }
 
+impl Cmd {
+    #[must_use]
+    pub fn new(program: &str, args: &[&str]) -> Self {
+        Cmd {
+            program: program.to_string(),
+            args: args.iter().map(|a| (*a).to_string()).collect(),
+            cwd: None,
+            env: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn cwd(mut self, dir: &Path) -> Self {
+        self.cwd = Some(dir.to_path_buf());
+        self
+    }
+
+    #[must_use]
+    pub fn env(mut self, vars: &[(&str, &str)]) -> Self {
+        self.env = vars
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect();
+        self
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Output {
     pub status: i32,
@@ -210,22 +237,13 @@ mod fake {
 mod tests {
     use super::*;
 
-    fn cmd(program: &str) -> Cmd {
-        Cmd {
-            program: program.into(),
-            args: vec![],
-            cwd: None,
-            env: vec![],
-        }
-    }
-
     #[test]
     fn fake_runner_records_and_answers() {
         let r = FakeRunner::new()
             .with_output("git", 0, "ok")
             .with_tool("git", "/usr/bin/git");
-        assert_eq!(r.run(&cmd("git")).unwrap().stdout, "ok");
-        assert!(r.run(&cmd("nope")).is_err());
+        assert_eq!(r.run(&Cmd::new("git", &[])).unwrap().stdout, "ok");
+        assert!(r.run(&Cmd::new("nope", &[])).is_err());
         assert_eq!(r.calls().len(), 2);
         assert_eq!(r.which("git"), Some(PathBuf::from("/usr/bin/git")));
         assert_eq!(r.which("nope"), None);
@@ -235,7 +253,7 @@ mod tests {
     fn system_runner_spawn_failure_is_err() {
         assert!(
             SystemRunner
-                .run(&cmd("definitely-not-a-program-xyz"))
+                .run(&Cmd::new("definitely-not-a-program-xyz", &[]))
                 .is_err()
         );
     }

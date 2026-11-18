@@ -15,6 +15,9 @@ use crate::workspace::Workspace;
 use anyhow::Result;
 use std::path::Path;
 
+/// The buildkit-rust repository.
+pub const REPO_URL: &str = "https://github.com/medaminben/buildkit-rust";
+
 /// This binary's own pinned version, `X.Y.Z`.
 pub const OWN_VERSION: &str = env!("BK_VERSION");
 

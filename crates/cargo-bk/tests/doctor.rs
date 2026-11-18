@@ -66,7 +66,7 @@ fn find<'a>(checks: &'a [Check], name: &str) -> &'a Check {
 }
 
 fn names(checks: &[Check]) -> Vec<&str> {
-    checks.iter().map(|c| c.name).collect()
+    checks.iter().map(|c| &*c.name).collect()
 }
 
 #[test]

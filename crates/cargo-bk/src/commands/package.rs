@@ -33,10 +33,7 @@ pub fn run(
     }
     let meta = ws.package_meta()?;
     let kebab = ProductName::parse(&meta.display_name)?.kebab;
-    let fallback = ws
-        .root_package_version()
-        .unwrap_or_else(|| "0.0.0".to_string());
-    let version = buildkit::resolve(&ws.root, &fallback, git);
+    let version = buildkit::resolve(&ws.root, &ws.fallback_version(), git);
     if version.full.ends_with("-dev") {
         writeln!(
             err,
@@ -46,14 +43,9 @@ pub fn run(
     }
 
     for app in &meta.apps {
-        let res = r.run(&Cmd {
-            program: "cargo".into(),
-            args: ["build", "--release", "--locked", "-p", app]
-                .map(String::from)
-                .to_vec(),
-            cwd: Some(ws.root.clone()),
-            env: Vec::new(),
-        })?;
+        let res = r.run(
+            &Cmd::new("cargo", &["build", "--release", "--locked", "-p", app]).cwd(&ws.root),
+        )?;
         if res.status != 0 {
             bail!("cargo build of {app} failed: {}", res.stderr.trim());
         }

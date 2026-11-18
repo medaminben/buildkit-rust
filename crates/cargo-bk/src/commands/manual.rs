@@ -17,25 +17,21 @@ fn is_tool_file(name: &str) -> bool {
         || Path::new(name).extension().is_some_and(|e| e == "pyc"))
 }
 
+fn name_of(path: &Path) -> &str {
+    path.file_name().and_then(|n| n.to_str()).unwrap_or("")
+}
+
 fn write_dir(dir: &Dir, dest: &Path) -> Result<()> {
     fs::create_dir_all(dest)?;
     for file in dir.files() {
-        let name = file
-            .path()
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let name = name_of(file.path());
         if is_tool_file(name) {
             fs::write(dest.join(name), file.contents())
                 .with_context(|| format!("cannot write {name}"))?;
         }
     }
     for sub in dir.dirs() {
-        let name = sub
-            .path()
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let name = name_of(sub.path());
         if name != "__pycache__" {
             write_dir(sub, &dest.join(name))?;
         }

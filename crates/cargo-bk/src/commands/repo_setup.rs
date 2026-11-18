@@ -30,12 +30,7 @@ pub fn default_checks() -> Vec<String> {
 }
 
 fn gh(args: &[&str]) -> Cmd {
-    Cmd {
-        program: "gh".into(),
-        args: args.iter().map(|a| (*a).to_string()).collect(),
-        cwd: None,
-        env: vec![],
-    }
+    Cmd::new("gh", args)
 }
 
 fn protection(repo: &str, branch: &str, checks: &[String]) -> Cmd {
@@ -64,16 +59,14 @@ fn protection(repo: &str, branch: &str, checks: &[String]) -> Cmd {
 }
 
 /// The mutating `gh` commands for `repo`, in order. Labels are created with
-/// `--force`, so existing ones are only updated and `_existing_labels` needs no
-/// filtering. `main_sha` is the commit the `Beta` branch starts from.
+/// `--force`, so existing ones are only updated. `beta_base` is the commit a missing
+/// `Beta` branch starts from, `None` when no branch is to be created.
 #[must_use]
 pub fn plan_repo_setup(
     repo: &str,
     flow: Flow,
-    _existing_labels: &[String],
-    has_beta: bool,
     check_names: &[String],
-    main_sha: &str,
+    beta_base: Option<&str>,
 ) -> Vec<Cmd> {
     let mut plan: Vec<Cmd> = LABELS
         .iter()
@@ -83,14 +76,14 @@ pub fn plan_repo_setup(
             ])
         })
         .collect();
-    if flow == Flow::Beta && !has_beta {
+    if let (Flow::Beta, Some(sha)) = (flow, beta_base) {
         plan.push(gh(&[
             "api",
             &format!("repos/{repo}/git/refs"),
             "-f",
             "ref=refs/heads/Beta",
             "-f",
-            &format!("sha={main_sha}"),
+            &format!("sha={sha}"),
         ]));
     }
     plan.push(protection(repo, "main", check_names));
@@ -130,6 +123,25 @@ fn parse_flow(ws: &Workspace) -> Result<Flow> {
     }
 }
 
+/// The commit sha of `main` when the `Beta` branch is missing, `None` when it exists.
+fn beta_base(runner: &dyn Runner, repo: &str) -> Result<Option<String>> {
+    let beta = read(runner, &["api", &format!("repos/{repo}/branches/Beta")])?;
+    match beta.status {
+        0 => Ok(None),
+        _ if beta.stderr.contains("HTTP 404") || beta.stderr.contains("Not Found") => read_ok(
+            runner,
+            &[
+                "api",
+                &format!("repos/{repo}/git/ref/heads/main"),
+                "--jq",
+                ".object.sha",
+            ],
+        )
+        .map(Some),
+        _ => bail!("cannot read the Beta branch: {}", beta.stderr.trim()),
+    }
+}
+
 /// Reads the repository state, then runs the plan (or prints it with `dry_run`).
 ///
 /// # Errors
@@ -153,29 +165,13 @@ pub fn run(
             ".nameWithOwner",
         ],
     )?;
-    // Direct flow has no Beta branch: `true` plans no ref command, so the sha stays unused.
-    let (mut has_beta, mut sha) = (true, String::new());
-    if flow == Flow::Beta {
-        let beta = read(runner, &["api", &format!("repos/{repo}/branches/Beta")])?;
-        has_beta = match beta.status {
-            0 => true,
-            _ if beta.stderr.contains("HTTP 404") || beta.stderr.contains("Not Found") => false,
-            _ => bail!("cannot read the Beta branch: {}", beta.stderr.trim()),
-        };
-        if !has_beta {
-            sha = read_ok(
-                runner,
-                &[
-                    "api",
-                    &format!("repos/{repo}/git/ref/heads/main"),
-                    "--jq",
-                    ".object.sha",
-                ],
-            )?;
-        }
-    }
+    let beta_base = if flow == Flow::Beta {
+        beta_base(runner, &repo)?
+    } else {
+        None
+    };
     let names = checks.map_or_else(default_checks, <[String]>::to_vec);
-    let plan = plan_repo_setup(&repo, flow, &[], has_beta, &names, &sha);
+    let plan = plan_repo_setup(&repo, flow, &names, beta_base.as_deref());
     for cmd in &plan {
         let line = std::iter::once(cmd.program.as_str())
             .chain(cmd.args.iter().map(String::as_str))

@@ -23,12 +23,7 @@ pub fn run(ws: &mut Workspace, version: &str, r: &dyn Runner, out: &mut dyn Writ
         return Ok(());
     }
     if changed.contains(&ws.root.join("Cargo.toml")) && ws.root.join("Cargo.lock").is_file() {
-        let res = r.run(&Cmd {
-            program: "cargo".into(),
-            args: ["update", "-p", "buildkit"].map(String::from).to_vec(),
-            cwd: Some(ws.root.clone()),
-            env: Vec::new(),
-        })?;
+        let res = r.run(&Cmd::new("cargo", &["update", "-p", "buildkit"]).cwd(&ws.root))?;
         if res.status != 0 {
             bail!("cargo update -p buildkit failed: {}", res.stderr.trim());
         }

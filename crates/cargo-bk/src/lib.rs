@@ -38,35 +38,28 @@ fn run(cli: &Cli) -> Result<()> {
         println!("{}", env!("BK_VERSION_FULL"));
         return Ok(());
     }
+    let cwd = std::env::current_dir()?;
     match &cli.command {
         Some(Command::Version) => {
-            println!("{}", commands::version::run(&std::env::current_dir()?)?);
-            Ok(())
+            println!("{}", commands::version::run(&cwd)?);
         }
         Some(Command::New(args)) => {
-            let dir = std::env::current_dir()?;
-            let report = commands::new::new_project(&dir, args, &exec::SystemRunner)?;
+            let report = commands::new::new_project(&cwd, args, &exec::SystemRunner)?;
             println!(
                 "created {} files, kept {}",
                 report.created.len(),
                 report.kept.len()
             );
-            Ok(())
         }
         Some(Command::AddCrate { name }) => {
-            let ws = commands::open_workspace(&std::env::current_dir()?)?;
-            commands::add::add_crate(&ws, name)?;
-            Ok(())
+            commands::add::add_crate(&commands::open_workspace(&cwd)?, name)?;
         }
         Some(Command::AddApp(args)) => {
-            let ws = commands::open_workspace(&std::env::current_dir()?)?;
-            commands::add::add_app(&ws, &args.name, args.kind())?;
-            Ok(())
+            commands::add::add_app(&commands::open_workspace(&cwd)?, &args.name, args.kind())?;
         }
         Some(Command::Package { format }) => {
-            let ws = commands::open_workspace(&std::env::current_dir()?)?;
             commands::package::run(
-                &ws,
+                &commands::open_workspace(&cwd)?,
                 format.as_deref(),
                 os::Os::current(),
                 &exec::SystemRunner,
@@ -74,56 +67,53 @@ fn run(cli: &Cli) -> Result<()> {
                 &mut std::io::stdout(),
                 &mut std::io::stderr(),
             )?;
-            Ok(())
         }
         Some(Command::Manual { check }) => {
-            let ws = Workspace::find(&std::env::current_dir()?)?;
-            commands::manual::run(&ws, &exec::SystemRunner, os::Os::current(), *check)
+            commands::manual::run(
+                &Workspace::find(&cwd)?,
+                &exec::SystemRunner,
+                os::Os::current(),
+                *check,
+            )?;
         }
-        Some(Command::CheckPins) => {
-            commands::check_pins::run(&Workspace::find(&std::env::current_dir()?)?)
-        }
+        Some(Command::CheckPins) => commands::check_pins::run(&Workspace::find(&cwd)?)?,
         Some(Command::Upgrade { version }) => {
-            let mut ws = Workspace::find(&std::env::current_dir()?)?;
             commands::upgrade::run(
-                &mut ws,
+                &mut Workspace::find(&cwd)?,
                 version,
                 &exec::SystemRunner,
                 &mut std::io::stdout(),
-            )
+            )?;
         }
         Some(Command::Doctor { machine }) => {
             let ws = if *machine {
                 None
             } else {
-                match Workspace::find(&std::env::current_dir()?) {
-                    Ok(ws) => Some(ws),
-                    Err(e) if e.to_string().starts_with("no Cargo workspace found") => None,
-                    Err(e) => return Err(e),
-                }
+                Workspace::try_find(&cwd)?
             };
-            commands::doctor::run(ws.as_ref(), &exec::SystemRunner, os::Os::current())
+            commands::doctor::run(ws.as_ref(), &exec::SystemRunner, os::Os::current())?;
         }
         Some(Command::Link {
             path,
             rewrite_dep,
             force,
         }) => commands::link::run_link(
-            Workspace::find(&std::env::current_dir()?)?,
+            Workspace::find(&cwd)?,
             path.as_deref(),
             *rewrite_dep,
             *force,
-        ),
+        )?,
         Some(Command::Unlink { rewrite_dep }) => {
-            commands::link::run_unlink(Workspace::find(&std::env::current_dir()?)?, *rewrite_dep)
+            commands::link::run_unlink(Workspace::find(&cwd)?, *rewrite_dep)?;
         }
         Some(Command::RepoSetup { dry_run, checks }) => commands::repo_setup::run(
-            &Workspace::find(&std::env::current_dir()?)?,
+            &Workspace::find(&cwd)?,
             &exec::SystemRunner,
             *dry_run,
             checks.as_deref(),
             &mut std::io::stdout(),
-        ),
+        )?,
         None => bail!("no command given; see cargo bk --help"),
     }
+    Ok(())
 }

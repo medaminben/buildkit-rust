@@ -34,7 +34,7 @@ fn default_checks_match_the_caller_job_names() {
 
 #[test]
 fn direct_plan_has_five_labels_and_one_protection() {
-    let plan = plan_repo_setup("o/r", Flow::Direct, &[], false, &default_checks(), "abc");
+    let plan = plan_repo_setup("o/r", Flow::Direct, &default_checks(), None);
     assert_eq!(plan.iter().filter(|c| is_label(c)).count(), 5);
     assert_eq!(plan.iter().filter(|c| is_protection(c)).count(), 1);
     assert_eq!(plan.len(), 6);
@@ -44,7 +44,7 @@ fn direct_plan_has_five_labels_and_one_protection() {
 
 #[test]
 fn labels_use_the_exact_names_and_colours() {
-    let plan = plan_repo_setup("o/r", Flow::Direct, &[], false, &default_checks(), "abc");
+    let plan = plan_repo_setup("o/r", Flow::Direct, &default_checks(), None);
     let text: Vec<String> = plan.iter().filter(|c| is_label(c)).map(joined).collect();
     for (n, c) in [
         ("semver:major", "b60205"),
@@ -64,7 +64,7 @@ fn labels_use_the_exact_names_and_colours() {
 
 #[test]
 fn beta_without_beta_adds_ref_and_second_protection() {
-    let plan = plan_repo_setup("o/r", Flow::Beta, &[], false, &default_checks(), "abc123");
+    let plan = plan_repo_setup("o/r", Flow::Beta, &default_checks(), Some("abc123"));
     assert_eq!(plan.iter().filter(|c| is_protection(c)).count(), 2);
     let ref_cmd = plan
         .iter()
@@ -85,14 +85,14 @@ fn beta_without_beta_adds_ref_and_second_protection() {
 
 #[test]
 fn beta_with_beta_has_no_ref_command() {
-    let plan = plan_repo_setup("o/r", Flow::Beta, &[], true, &default_checks(), "abc");
+    let plan = plan_repo_setup("o/r", Flow::Beta, &default_checks(), None);
     assert!(!plan.iter().any(|c| joined(c).contains("git/refs")));
     assert_eq!(plan.iter().filter(|c| is_protection(c)).count(), 2);
 }
 
 #[test]
 fn protection_payload_is_exact() {
-    let plan = plan_repo_setup("o/r", Flow::Direct, &[], false, &default_checks(), "abc");
+    let plan = plan_repo_setup("o/r", Flow::Direct, &default_checks(), None);
     let p = plan.iter().find(|c| is_protection(c)).unwrap();
     let text = joined(p);
     assert!(text.starts_with("gh api -X PUT repos/o/r/branches/main/protection"));
@@ -111,14 +111,7 @@ fn protection_payload_is_exact() {
 
 #[test]
 fn custom_checks_replace_the_defaults() {
-    let plan = plan_repo_setup(
-        "o/r",
-        Flow::Direct,
-        &[],
-        false,
-        &checks(&["self-test"]),
-        "abc",
-    );
+    let plan = plan_repo_setup("o/r", Flow::Direct, &checks(&["self-test"]), None);
     let text = joined(plan.iter().find(|c| is_protection(c)).unwrap());
     assert!(text.contains("required_status_checks[contexts][]=self-test"));
     assert!(!text.contains("ci / lint"));

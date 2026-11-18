@@ -1,6 +1,6 @@
 //! The Debian package format.
 
-use super::{PackageCtx, copy_tree};
+use super::{PackageCtx, copy_file, copy_tree, ensure_parent};
 use crate::exec::{Cmd, Runner};
 use crate::workspace::PackageMeta;
 use anyhow::{Context, Result, bail};
@@ -38,11 +38,13 @@ pub fn deb_control(
     lines.join("\n") + "\n"
 }
 
-/// Builds `<out>/<kebab>_<version>_amd64.deb` from `stage`; `meta.desktop`
-/// and `meta.icon` are read relative to the workspace `root`. The package tree is assembled in `<root>/build/deb-root`.
-/// The whole stage goes to `/usr/lib/<kebab>/`, so files sit next to the
-/// executables as in the Windows install; `/usr/bin/<app>` are relative
-/// symlinks to them.
+/// Builds `<out>/<kebab>_<version>_amd64.deb` from `stage`.
+///
+/// `meta.desktop` and `meta.icon` are read relative to the workspace `root`. The package tree
+/// is assembled in `<root>/build/deb-root`.
+///
+/// The whole stage goes to `/usr/lib/<kebab>/`, so files sit next to the executables as in the
+/// Windows install; `/usr/bin/<app>` are relative symlinks to them.
 ///
 /// # Errors
 /// When a file is missing, a file operation fails, or `dpkg-deb` fails.
@@ -68,28 +70,25 @@ pub fn build_deb(ctx: &PackageCtx, r: &dyn Runner) -> Result<PathBuf> {
     for app in &meta.apps {
         symlink(&format!("../lib/{kebab}/{app}"), &bin.join(app))?;
     }
-    copy(
+    copy_file(
         &root.join(&meta.desktop),
         &pkg.join(format!("usr/share/applications/{kebab}.desktop")),
     )?;
-    copy(
+    copy_file(
         &root.join(&meta.icon),
         &pkg.join(format!("usr/share/icons/hicolor/256x256/apps/{kebab}.png")),
     )?;
-    let mut copyright = String::new();
+    let mut texts = Vec::new();
     for name in ["LICENSE", "THIRD_PARTY_NOTICES.txt"] {
         let p = stage.join(name);
         if p.is_file() {
-            if !copyright.is_empty() && !copyright.ends_with("\n\n") {
-                copyright.push_str(if copyright.ends_with('\n') {
-                    "\n"
-                } else {
-                    "\n\n"
-                });
-            }
-            copyright.push_str(&fs::read_to_string(&p)?);
+            texts.push(fs::read_to_string(&p)?);
         }
     }
+    let last = texts.pop().unwrap_or_default();
+    let mut copyright: Vec<&str> = texts.iter().map(|t| t.trim_end()).collect();
+    copyright.push(&last);
+    let copyright = copyright.join("\n\n");
     let doc = pkg.join(format!("usr/share/doc/{kebab}/copyright"));
     write(&doc, copyright.as_bytes())?;
 
@@ -102,38 +101,26 @@ pub fn build_deb(ctx: &PackageCtx, r: &dyn Runner) -> Result<PathBuf> {
 
     fs::create_dir_all(out).with_context(|| format!("cannot create {}", out.display()))?;
     let deb = out.join(format!("{kebab}_{version}_amd64.deb"));
-    let res = r.run(&Cmd {
-        program: "dpkg-deb".into(),
-        args: vec![
-            "--root-owner-group".into(),
-            "--build".into(),
-            pkg.display().to_string(),
-            deb.display().to_string(),
-        ],
-        cwd: Some(root.to_path_buf()),
-        env: Vec::new(),
-    })?;
+    let res = r.run(
+        &Cmd::new(
+            "dpkg-deb",
+            &[
+                "--root-owner-group",
+                "--build",
+                &pkg.display().to_string(),
+                &deb.display().to_string(),
+            ],
+        )
+        .cwd(root),
+    )?;
     if res.status != 0 {
         bail!("dpkg-deb failed: {}", res.stderr.trim());
     }
     Ok(deb)
 }
 
-fn copy(src: &Path, dest: &Path) -> Result<()> {
-    if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("cannot create {}", parent.display()))?;
-    }
-    fs::copy(src, dest)
-        .with_context(|| format!("cannot copy {} to {}", src.display(), dest.display()))?;
-    Ok(())
-}
-
 fn write(dest: &Path, data: &[u8]) -> Result<()> {
-    if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("cannot create {}", parent.display()))?;
-    }
+    ensure_parent(dest)?;
     fs::write(dest, data).with_context(|| format!("cannot write {}", dest.display()))
 }
 
