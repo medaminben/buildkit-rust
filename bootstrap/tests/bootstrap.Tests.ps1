@@ -81,7 +81,7 @@ BeforeAll {
 
 AfterAll {
     foreach ($f in 'winget', 'rustup', 'cargo', 'code', 'Write-Call', 'Test-StubMissing', 'Invoke-Bootstrap') {
-        Remove-Item "function:global:$f" -ErrorAction SilentlyContinue
+        Remove-Item "Function:\$f" -ErrorAction SilentlyContinue
     }
     Remove-Variable Calls, CallArgs, StubMissing, BkVersion -Scope Global -ErrorAction SilentlyContinue
 }
@@ -239,7 +239,7 @@ Describe 'bootstrap.ps1' {
             try {
                 Invoke-Bootstrap -Params @{ Yes = $true } -Script $script:CloneScript -BkVersion '1.2.3' | Out-Null
             } finally {
-                Remove-Item function:global:git -ErrorAction SilentlyContinue
+                Remove-Item Function:\git -ErrorAction SilentlyContinue
             }
             $global:Calls | Where-Object { $_ -match '^cargo install --locked --path' } | Should -Not -BeNullOrEmpty
         }
