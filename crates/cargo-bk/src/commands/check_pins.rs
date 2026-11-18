@@ -36,7 +36,14 @@ pub fn run(ws: &Workspace) -> Result<()> {
     if bad.is_empty() {
         return Ok(());
     }
-    let rel = |p: &std::path::Path| p.strip_prefix(&ws.root).unwrap_or(p).display().to_string();
+    let rel = |p: &std::path::Path| match p.strip_prefix(&ws.root) {
+        Ok(r) => r
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/"),
+        Err(_) => p.display().to_string(),
+    };
     let lines: Vec<String> = bad
         .iter()
         .map(|p| {
