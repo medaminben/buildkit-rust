@@ -12,7 +12,9 @@ use std::path::Path;
 static MANUAL_TOOL: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../tools/manual");
 
 fn is_tool_file(name: &str) -> bool {
-    !(name.starts_with("test_") || name == "capture.sh")
+    !(name.starts_with("test_")
+        || name == "capture.sh"
+        || Path::new(name).extension().is_some_and(|e| e == "pyc"))
 }
 
 fn write_dir(dir: &Dir, dest: &Path) -> Result<()> {
@@ -34,7 +36,9 @@ fn write_dir(dir: &Dir, dest: &Path) -> Result<()> {
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("");
-        write_dir(sub, &dest.join(name))?;
+        if name != "__pycache__" {
+            write_dir(sub, &dest.join(name))?;
+        }
     }
     Ok(())
 }

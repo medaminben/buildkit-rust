@@ -127,5 +127,6 @@ fn write_tool_removes_stale_files_and_skips_tests_and_capture() {
     assert!(dest.join("template.html").is_file());
     assert!(!dest.join("test_build_manual.py").exists());
     assert!(!dest.join("capture.sh").exists());
+    assert!(!dest.join("__pycache__").exists());
     cargo_bk::commands::manual::write_tool(&dest).unwrap();
 }
