@@ -1,0 +1,42 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/*"]
+
+[workspace.package]
+# The version without a release tag (`X.Y.Z-dev`); tags give the real one.
+version = "0.1.0"
+edition = "2024"
+rust-version = "{{rust_version}}"
+
+[workspace.metadata.buildkit]
+version = "{{bk_version}}"
+flow = "{{flow}}"
+repo = "{{repo}}"
+
+[workspace.metadata.bk.package]
+display-name = "{{name}}"
+main-app = "{{kebab}}-gui"
+apps = ["{{kebab}}-gui", "{{kebab}}-console"]
+iss = "installer/{{kebab}}.iss"
+desktop = "packaging/{{kebab}}.desktop"
+icon = "packaging/icon.png"
+extra-files = []
+system-deps.apt = [
+  "libxkbcommon0",
+  "libwayland-client0",
+  "libx11-6",
+  "libxcursor1",
+  "libxrandr2",
+  "libxi6",
+  "libvulkan1",
+  "libgl1",
+]
+
+[workspace.dependencies]
+buildkit = { git = "https://github.com/medaminben/buildkit-rust", tag = "v{{bk_version}}" }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }

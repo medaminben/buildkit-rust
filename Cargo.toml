@@ -1,0 +1,21 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+exclude = ["tests/fixtures"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/medaminben/buildkit-rust"
+
+[workspace.metadata.buildkit]
+# The version that README.md and docs/ show in their examples; `cargo bk check-pins` compares them.
+# Move it with the release tag.
+version = "0.1.0"
+flow = "direct"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }

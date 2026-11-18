@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# shellcheck source=lib.sh source-path=SCRIPTDIR
+. "$(dirname "$0")/lib.sh"
+stub_log "dpkg-query $*"
+stub_missing apt && exit 1
+for last; do :; done
+stub_missing "$last" && exit 1
+echo -n "install ok installed"; exit 0

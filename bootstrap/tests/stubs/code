@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# shellcheck source=lib.sh source-path=SCRIPTDIR
+. "$(dirname "$0")/lib.sh"
+stub_log "code $*"
+stub_missing code && exit 127
+if [[ "${1:-}" == "--list-extensions" ]]; then
+    stub_missing ext || printf "%s\n" rust-lang.rust-analyzer vadimcn.vscode-lldb tamasfe.even-better-toml
+elif [[ "${1:-}" == "--version" ]]; then echo "1.95.0"; fi
+exit 0

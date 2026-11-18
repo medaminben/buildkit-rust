@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# shellcheck source=lib.sh source-path=SCRIPTDIR
+. "$(dirname "$0")/lib.sh"
+stub_version_tool gh "gh version 2.50.0" "$@"

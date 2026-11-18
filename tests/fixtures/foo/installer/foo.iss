@@ -1,0 +1,46 @@
+; Inno Setup script for Foo. Built by `cargo bk package`, which passes
+; /DAppVersion, /DAppVersionNumeric, /DStageDir, /O build/dist and
+; /F<name>_Setup_<version>. /O and /F override OutputDir and OutputBaseFilename below,
+; which keep a manual ISCC run on the same file name.
+; Never change this AppId: it is how upgrades find the existing install.
+#define MyAppId "{00000000-0000-4000-8000-000000000000}"
+#define MyAppName "Foo"
+#define MyAppFileName "Foo"
+#define MyAppExe "foo-gui.exe"
+
+#ifndef AppVersion
+  #error Pass /DAppVersion=<full version>
+#endif
+#ifndef AppVersionNumeric
+  #error Pass /DAppVersionNumeric=X.Y.Z
+#endif
+#ifndef StageDir
+  #error Pass /DStageDir=<folder with the staged install tree>
+#endif
+
+[Setup]
+AppId={{#MyAppId}
+AppName={#MyAppName}
+AppVersion={#AppVersion}
+VersionInfoVersion={#AppVersionNumeric}
+DefaultDirName={autopf}\{#MyAppName}
+DefaultGroupName={#MyAppName}
+UninstallDisplayIcon={app}\{#MyAppExe}
+OutputBaseFilename={#MyAppFileName}_Setup_{#AppVersion}
+Compression=lzma2
+SolidCompression=yes
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+
+[Tasks]
+Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
+
+[Files]
+Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\{#MyAppExe}"; Description: "Start {#MyAppName}"; Flags: nowait postinstall skipifsilent

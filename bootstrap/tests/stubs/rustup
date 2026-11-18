@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# shellcheck source=lib.sh source-path=SCRIPTDIR
+. "$(dirname "$0")/lib.sh"
+stub_log "rustup $*"
+stub_missing rustup && exit 127
+case "${1:-} ${2:-}" in
+  "--version "*) echo "rustup 1.28.0" ;;
+  "toolchain list") echo "stable-x86_64-unknown-linux-gnu (default)" ;;
+  "component list")
+    printf "%s\n" rustfmt-x86_64-unknown-linux-gnu clippy-x86_64-unknown-linux-gnu
+    stub_missing llvm-tools || echo llvm-tools-x86_64-unknown-linux-gnu ;;
+esac
+exit 0

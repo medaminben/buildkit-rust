@@ -1,0 +1,146 @@
+# Builds the installers of a release and attaches them to it. release.yml starts it
+# with "gh workflow run installer.yml --ref <tag>"; run it by hand on a tag to attach
+# the installers to that release, or on a branch for workflow artifacts only.
+name: Installer
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: installer-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Build dependencies of eframe on Linux, always installed.
+  BUILD_APT: libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write # gh release upload
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Read the buildkit-rust pin
+        id: bk
+        run: |
+          set -euo pipefail
+          python -I - <<'PY' >> "$GITHUB_OUTPUT"
+          import sys, tomllib
+          sys.stdout.reconfigure(newline="\n")
+          with open("Cargo.toml", "rb") as f:
+              ws = tomllib.load(f)["workspace"]["metadata"]
+          print("ref=v" + ws["buildkit"]["version"])
+          PY
+      - name: Install the toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> build/target"
+          key: bk-${{ steps.bk.outputs.ref }}
+      - name: Install cargo-bk
+        env:
+          REF: ${{ steps.bk.outputs.ref }}
+        run: cargo install --git "https://github.com/medaminben/buildkit-rust" --tag "$REF" cargo-bk --locked
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - name: Install Inno Setup
+        run: |
+          if [ ! -e "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+            choco install innosetup -y --no-progress
+          fi
+      - name: Package
+        run: cargo bk package --format inno
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-windows
+          path: build/dist/*
+          if-no-files-found: error
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" build/dist/* --clobber
+
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write # gh release upload
+    defaults:
+      run:
+        shell: bash
+    env:
+      # appimagetool runs without FUSE on the runner.
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Read the buildkit-rust pin
+        id: bk
+        run: |
+          set -euo pipefail
+          python -I - <<'PY' >> "$GITHUB_OUTPUT"
+          import sys, tomllib
+          sys.stdout.reconfigure(newline="\n")
+          with open("Cargo.toml", "rb") as f:
+              ws = tomllib.load(f)["workspace"]["metadata"]
+          apt = " ".join(ws.get("bk", {}).get("package", {}).get("system-deps", {}).get("apt", []))
+          print("ref=v" + ws["buildkit"]["version"])
+          print("apt=" + apt)
+          PY
+      - name: Install system packages
+        env:
+          APT_PACKAGES: ${{ steps.bk.outputs.apt }}
+        run: |
+          set -euo pipefail
+          read -r -a extra <<< "$APT_PACKAGES"
+          read -r -a build <<< "$BUILD_APT"
+          sudo apt-get update
+          sudo apt-get install -y "${build[@]}" "${extra[@]}"
+      - name: Install the toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> build/target"
+          key: bk-${{ steps.bk.outputs.ref }}
+      - name: Install cargo-bk
+        env:
+          REF: ${{ steps.bk.outputs.ref }}
+        run: cargo install --git "https://github.com/medaminben/buildkit-rust" --tag "$REF" cargo-bk --locked
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - name: Package
+        run: cargo bk package --format all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-linux
+          path: build/dist/*
+          if-no-files-found: error
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" build/dist/* --clobber

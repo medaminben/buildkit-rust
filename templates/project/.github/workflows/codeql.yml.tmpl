@@ -1,0 +1,16 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [{{branches}}]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"
+
+jobs:
+  codeql:
+    uses: medaminben/buildkit-rust/.github/workflows/codeql.yml@v{{bk_version}}
+    permissions:
+      security-events: write
+      actions: read
+      contents: read

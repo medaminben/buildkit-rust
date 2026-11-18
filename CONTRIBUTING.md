@@ -32,5 +32,7 @@ Conventional Commits: `<type>(optional-scope): <description>` with the types
 
 The default branch is `main` and the flow is direct: a feature branch goes to `main` by pull
 request. A release is a tag `vX.Y.Z`, created by hand on `main` after the merge.
+Push the tag to GitHub before any product pins that version: `cargo bk new`, the setup scripts
+and the products' workflows fetch buildkit-rust and cargo-bk at that tag.
 
 Do not commit secrets or machine-local paths.

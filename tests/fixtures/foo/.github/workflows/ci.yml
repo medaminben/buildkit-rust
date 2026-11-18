@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v0.0.0
+    permissions:
+      contents: read
+    with:
+      # More inputs: apt-packages, xvfb, coverage, miri-crates, package, format-exclude.
+      # See docs/CI_CD.md of buildkit-rust.
+      timeout-minutes: 45

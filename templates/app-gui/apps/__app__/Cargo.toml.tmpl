@@ -1,0 +1,16 @@
+[package]
+name = "{{app}}"
+version.workspace = true
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+{{crate_package}} = { path = "../../crates/{{crate}}" }
+eframe = "0.37"
+
+[build-dependencies]
+buildkit.workspace = true
+
+[lints]
+workspace = true

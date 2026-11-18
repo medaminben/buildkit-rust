@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Sets up this product after a clone.
+#
+#   1. Fetches buildkit-rust's bootstrap at the pinned tag and runs it, when `cargo bk` is
+#      missing or on another version than Cargo.toml pins.
+#   2. Installs the system packages listed in `system-deps.apt` (asks first unless --yes).
+#   3. npm ci (commit hooks) and cargo fetch.
+#   4. cargo bk doctor, then cargo build and cargo test.
+#
+# Usage:
+#   scripts/setup.sh [--yes] [--dry-run]
+
+set -euo pipefail
+
+BOOTSTRAP_REPO="https://github.com/medaminben/buildkit-rust"
+
+assume_yes=false
+dry_run=false
+for arg in "$@"; do
+    case "$arg" in
+        --yes | -y) assume_yes=true ;;
+        --dry-run) dry_run=true ;;
+        -h | --help)
+            sed -n '2,/^$/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
+            exit 0
+            ;;
+        *) echo "Unknown option: $arg" >&2; exit 2 ;;
+    esac
+done
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+run() {
+    if $dry_run; then
+        echo "+ $*"
+    else
+        "$@"
+    fi
+}
+
+# The pinned tag: the first `version = "` line inside [workspace.metadata.buildkit].
+pin="$(awk '
+    /^\[/ { in_section = ($0 == "[workspace.metadata.buildkit]") }
+    in_section && /^version = "/ { gsub(/^version = "|".*$/, ""); print; exit }
+' Cargo.toml)"
+if [[ -z "$pin" ]]; then
+    echo "No version in [workspace.metadata.buildkit] of Cargo.toml." >&2
+    exit 1
+fi
+
+echo "== 1/4 cargo bk v$pin"
+installed="$(cargo bk --version 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
+if [[ "$installed" != "$pin" ]]; then
+    tools="build/tools/buildkit-rust-v$pin"
+    if [[ ! -d "$tools" ]]; then
+        run git clone --depth 1 --branch "v$pin" "$BOOTSTRAP_REPO" "$tools"
+    fi
+    bootstrap_args=()
+    $assume_yes && bootstrap_args+=(--yes)
+    run bash "$tools/bootstrap/bootstrap.sh" ${bootstrap_args[@]+"${bootstrap_args[@]}"}
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
+echo "== 2/4 system packages"
+if [[ "$(uname -s)" == Linux ]] && command -v apt-get >/dev/null 2>&1; then
+    # The `system-deps.apt = [...]` array of [workspace.metadata.bk.package], one or more lines.
+    mapfile -t wanted < <(awk '/^system-deps\.apt *=/ { on = 1 } on { print } on && /\]/ { exit }' Cargo.toml | grep -Eo '"[^"]+"' | tr -d '"')
+    missing=()
+    for pkg in "${wanted[@]}"; do
+        dpkg -s "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+    done
+    if [[ ${#missing[@]} -eq 0 ]]; then
+        echo "All system packages are installed."
+    else
+        echo "Missing: ${missing[*]}"
+        answer=n
+        if $assume_yes || $dry_run; then
+            answer=y
+        else
+            printf 'Install them with sudo apt-get? [y/N] ' >&2
+            read -r answer || answer=n
+        fi
+        if [[ "$answer" =~ ^[Yy] ]]; then
+            run sudo apt-get install -y "${missing[@]}"
+        else
+            echo "Skipped. The app may not start without them."
+        fi
+    fi
+else
+    echo "Nothing to do on this system."
+fi
+
+echo "== 3/4 commit hooks and dependencies"
+if [[ -f package-lock.json ]]; then
+    run npm ci
+else
+    run npm install
+fi
+if [[ -f Cargo.lock ]]; then
+    run cargo fetch --locked
+else
+    run cargo fetch
+fi
+
+echo "== 4/4 doctor, build, test"
+run cargo bk doctor
+run cargo build
+run cargo test
+echo "Setup done."

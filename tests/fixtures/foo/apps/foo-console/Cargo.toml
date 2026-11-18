@@ -1,0 +1,15 @@
+[package]
+name = "foo-console"
+version.workspace = true
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+foo-core = { path = "../../crates/core" }
+
+[build-dependencies]
+buildkit.workspace = true
+
+[lints]
+workspace = true

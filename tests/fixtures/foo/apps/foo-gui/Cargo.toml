@@ -1,0 +1,16 @@
+[package]
+name = "foo-gui"
+version.workspace = true
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+foo-core = { path = "../../crates/core" }
+eframe = "0.37"
+
+[build-dependencies]
+buildkit.workspace = true
+
+[lints]
+workspace = true
