@@ -106,6 +106,20 @@ mod fake {
             self
         }
 
+        /// Answers every run of `program` with `status`, no stdout and `stderr`.
+        #[must_use]
+        pub fn with_failure(self, program: &str, status: i32, stderr: &str) -> Self {
+            self.responses.borrow_mut().insert(
+                program.to_string(),
+                Output {
+                    status,
+                    stdout: String::new(),
+                    stderr: stderr.to_string(),
+                },
+            );
+            self
+        }
+
         /// Makes `which(program)` return `path`.
         #[must_use]
         pub fn with_tool(self, program: &str, path: &str) -> Self {

@@ -107,23 +107,34 @@ fn root_with_space_and_accent_stages() {
     touch(&root.join("assets/x.png"));
     let ws = product(&root, "\"assets/*\"", &["app"]);
     let plan = plan_stage(&ws, &ws.package_meta().unwrap(), Os::Linux).unwrap();
-    let stage = root.join("build/stage");
-    touch(&stage.join("stale"));
-    apply_stage(&plan, &stage).unwrap();
+    touch(&root.join("build/stage/stale"));
+    let stage = apply_stage(&plan, &root).unwrap();
+    assert_eq!(stage, root.join("build/stage"));
     assert!(stage.join("app").is_file());
     assert!(stage.join("assets/x.png").is_file());
     assert!(!stage.join("stale").exists());
 }
 
 #[test]
-fn apply_refuses_stage_dir_outside_build() {
+fn apply_wipes_only_build_stage() {
     let t = tempfile::tempdir().unwrap();
-    let dir = t.path().join("precious");
-    touch(&dir.join("keep"));
+    touch(&t.path().join("build/other/keep"));
+    touch(&t.path().join("build/stage/old"));
     let plan = cargo_bk::package::stage::StagePlan { files: vec![] };
-    assert!(apply_stage(&plan, &dir).is_err());
-    assert!(dir.join("keep").exists());
-    assert!(apply_stage(&plan, &t.path().join("build")).is_err());
+    let stage = apply_stage(&plan, t.path()).unwrap();
+    assert!(stage.is_dir());
+    assert!(!stage.join("old").exists());
+    assert!(t.path().join("build/other/keep").exists());
+}
+
+#[test]
+fn apply_rejects_destination_escaping_the_stage() {
+    let t = tempfile::tempdir().unwrap();
+    touch(&t.path().join("f"));
+    let plan = cargo_bk::package::stage::StagePlan {
+        files: vec![(t.path().join("f"), PathBuf::from("../escape"))],
+    };
+    assert!(apply_stage(&plan, t.path()).is_err());
 }
 
 #[test]
@@ -143,9 +154,28 @@ fn notices_join_crate_and_extra_text() {
 }
 
 #[test]
-fn notices_fail_when_cargo_about_fails() {
+fn notices_failure_shows_stderr_without_hint() {
     let t = tempfile::tempdir().unwrap();
     let ws = product(t.path(), "", &["app"]);
-    let r = FakeRunner::new().with_output("cargo", 1, "");
-    assert!(notices(&ws, &r).is_err());
+    let r = FakeRunner::new().with_failure("cargo", 1, "license MIT not accepted");
+    let e = notices(&ws, &r).unwrap_err().to_string();
+    assert!(e.contains("license MIT not accepted"));
+    assert!(!e.contains("cargo install cargo-about"));
+}
+
+#[test]
+fn notices_hint_when_subcommand_missing() {
+    let t = tempfile::tempdir().unwrap();
+    let ws = product(t.path(), "", &["app"]);
+    let r = FakeRunner::new().with_failure("cargo", 101, "error: no such command: `about`");
+    let e = notices(&ws, &r).unwrap_err().to_string();
+    assert!(e.contains("cargo install cargo-about"));
+}
+
+#[test]
+fn notices_hint_when_cargo_cannot_spawn() {
+    let t = tempfile::tempdir().unwrap();
+    let ws = product(t.path(), "", &["app"]);
+    let e = notices(&ws, &FakeRunner::new()).unwrap_err();
+    assert!(format!("{e:#}").contains("cargo install cargo-about"));
 }

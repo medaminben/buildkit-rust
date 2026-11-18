@@ -82,34 +82,24 @@ fn extra_files(
     Ok(())
 }
 
-/// Replaces `stage_dir` with the planned files. `stage_dir` must lie below a
-/// directory named `build`, because the old content is deleted.
+/// Replaces `<root>/build/stage` with the planned files and returns that
+/// directory. Nothing outside it is touched.
 ///
 /// # Errors
-/// When `stage_dir` is not below a `build` directory, a destination leaves the
-/// stage, or a file operation fails.
-pub fn apply_stage(plan: &StagePlan, stage_dir: &Path) -> Result<()> {
-    let comps: Vec<Component> = stage_dir.components().collect();
-    let below_build = comps
-        .iter()
-        .rev()
-        .skip(1)
-        .any(|c| matches!(c, Component::Normal(n) if *n == "build"));
-    if !below_build || comps.contains(&Component::ParentDir) {
-        bail!(
-            "refusing to wipe {}: the stage directory must be inside a build/ folder",
-            stage_dir.display()
-        );
-    }
+/// When a destination leaves the stage, or a file operation fails.
+pub fn apply_stage(plan: &StagePlan, root: &Path) -> Result<PathBuf> {
+    let stage_dir = root.join("build").join("stage");
     for (_, dest) in &plan.files {
         if dest.is_absolute() || dest.components().any(|c| c == Component::ParentDir) {
             bail!("stage destination {} leaves the stage", dest.display());
         }
     }
     if stage_dir.exists() {
-        std::fs::remove_dir_all(stage_dir)
+        std::fs::remove_dir_all(&stage_dir)
             .with_context(|| format!("cannot clear {}", stage_dir.display()))?;
     }
+    std::fs::create_dir_all(&stage_dir)
+        .with_context(|| format!("cannot create {}", stage_dir.display()))?;
     for (src, dest) in &plan.files {
         let target = stage_dir.join(dest);
         if let Some(parent) = target.parent() {
@@ -119,8 +109,5 @@ pub fn apply_stage(plan: &StagePlan, stage_dir: &Path) -> Result<()> {
         std::fs::copy(src, &target)
             .with_context(|| format!("cannot copy {} to {}", src.display(), target.display()))?;
     }
-    if !stage_dir.exists() {
-        std::fs::create_dir_all(stage_dir)?;
-    }
-    Ok(())
+    Ok(stage_dir)
 }

@@ -10,19 +10,24 @@ use anyhow::{Context, Result, bail};
 /// # Errors
 /// When cargo-about cannot run or fails, or the extra file cannot be read.
 pub fn notices(ws: &Workspace, r: &dyn Runner) -> Result<String> {
-    let out = r.run(&Cmd {
-        program: "cargo".into(),
-        args: ["about", "generate", "--config", "about.toml", "about.hbs"]
-            .map(String::from)
-            .to_vec(),
-        cwd: Some(ws.root.clone()),
-        env: Vec::new(),
-    })?;
+    let out = r
+        .run(&Cmd {
+            program: "cargo".into(),
+            args: ["about", "generate", "--config", "about.toml", "about.hbs"]
+                .map(String::from)
+                .to_vec(),
+            cwd: Some(ws.root.clone()),
+            env: Vec::new(),
+        })
+        .context("cannot run cargo; install cargo-about with `cargo install cargo-about`")?;
     if out.status != 0 {
-        bail!(
-            "cargo about failed (install it with `cargo install cargo-about`): {}",
-            out.stderr.trim()
-        );
+        let err = out.stderr.trim();
+        if err.contains("no such command") {
+            bail!(
+                "cargo about failed: {err}\ninstall cargo-about with `cargo install cargo-about`"
+            );
+        }
+        bail!("cargo about failed: {err}");
     }
     let mut text = out.stdout.trim_end().to_string();
     let extra_path = ws.root.join("packaging").join("NOTICES-extra.txt");
