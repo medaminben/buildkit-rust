@@ -1,0 +1,10 @@
+use {{snake}}_{{crate_snake}}::Greeting;
+
+fn main() {
+    let arg = std::env::args().nth(1);
+    match arg.as_deref() {
+        Some("--version") => println!("{{kebab}}-console {}", env!("BK_VERSION_FULL")),
+        Some(name) => println!("{}", Greeting::new(name)),
+        None => println!("{}", Greeting::new("world")),
+    }
+}

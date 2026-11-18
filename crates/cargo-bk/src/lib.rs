@@ -38,6 +38,16 @@ fn run(cli: &Cli) -> Result<()> {
             println!("{}", commands::version::run(&std::env::current_dir()?)?);
             Ok(())
         }
+        Some(Command::New(args)) => {
+            let dir = std::env::current_dir()?;
+            let report = commands::new::new_project(&dir, args, &exec::SystemRunner)?;
+            println!(
+                "created {} files, kept {}",
+                report.created.len(),
+                report.kept.len()
+            );
+            Ok(())
+        }
         Some(_) => bail!("not implemented yet"),
         None => bail!("no command given; see cargo bk --help"),
     }

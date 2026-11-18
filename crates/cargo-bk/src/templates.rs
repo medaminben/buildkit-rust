@@ -100,7 +100,8 @@ pub fn write_tree(dir: &Dir<'static>, dest: &Path, vars: &Vars) -> Result<WriteR
     collect(dir, &mut files);
     let mut planned = Vec::new();
     for file in files {
-        let rel = file.path();
+        // Embedded paths are relative to the tree root; make them relative to `dir`.
+        let rel = file.path().strip_prefix(dir.path()).unwrap_or(file.path());
         if rel.file_name().is_some_and(|n| n == ".keep") {
             continue;
         }

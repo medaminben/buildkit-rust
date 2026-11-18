@@ -1,5 +1,6 @@
 //! One module per subcommand.
 
+pub mod new;
 pub mod version;
 
 use crate::workspace::Workspace;

@@ -1,5 +1,6 @@
 //! The command line.
 
+use crate::commands::new::NewArgs;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -19,7 +20,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Command {
     /// Create a product.
-    New,
+    New(NewArgs),
     /// Add a library crate.
     AddCrate,
     /// Add an app crate.
