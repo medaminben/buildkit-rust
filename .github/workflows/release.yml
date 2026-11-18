@@ -27,6 +27,9 @@
 # caller's [workspace.metadata.buildkit] pin, which is read from the caller's
 # Cargo.toml after the first checkout.
 #
+# first-release: an optional key "first-release = "X.Y.Z"" in the caller's
+# [workspace.metadata.buildkit] sets the first release while no stable tag exists.
+#
 # installer-workflow is started with "gh workflow run <file> --ref <tag>", so
 # that workflow must have "on: workflow_dispatch" in the caller's repository.
 #
@@ -102,6 +105,7 @@ jobs:
           with open("Cargo.toml", "rb") as f:
               ws = tomllib.load(f)["workspace"]["metadata"]
           print("ref=" + (os.environ["BUILDKIT_REF"] or "v" + ws["buildkit"]["version"]))
+          print("first_release=" + ws["buildkit"].get("first-release", ""))
           PY
       - uses: actions/checkout@v4
         with:
@@ -117,6 +121,7 @@ jobs:
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           THIS_REPO: ${{ github.repository }}
           SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          FIRST_RELEASE: ${{ steps.bk.outputs.first_release }}
         run: |
           set -euo pipefail
           git fetch --tags --force
@@ -124,7 +129,7 @@ jobs:
           if [ "$HEAD_REPO" != "$THIS_REPO" ]; then fork=(--from-fork); fi
           tag="$(python3 -B -I .buildkit/tools/release/plan_release.py \
             --labels "$LABELS" --base "$BASE_REF" --head "$HEAD_REF" --sha "$SHA" \
-            "${fork[@]}" --notes-file "$RUNNER_TEMP/notes.md")"
+            --first-release "$FIRST_RELEASE" "${fork[@]}" --notes-file "$RUNNER_TEMP/notes.md")"
           if [ -z "$tag" ]; then
             echo "::notice::No release for this pull request (semver:none)."
           fi

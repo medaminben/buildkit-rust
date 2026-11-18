@@ -161,6 +161,22 @@ The bump comes from the label of the merged pull request: `semver:major`, `semve
 `semver:patch` (also the default without a label) or `semver:none` (no release).
 `cargo bk repo-setup` creates these labels and `automerge`.
 
+### First release
+
+While the repository has no stable tag, the first release is `0.1.0` plus the label bump. To
+start elsewhere, set `first-release` under `[workspace.metadata.buildkit]` in the product's
+`Cargo.toml`:
+
+```toml
+[workspace.metadata.buildkit]
+first-release = "2.0.0"
+```
+
+The first merge into `Beta` then gets `v2.0.0-beta.1` and the first merge into `main` gets
+`v2.0.0`, whatever the bump label (`semver:none` still means no release). Once a stable tag
+exists, the key is ignored. A value that is not `X.Y.Z` without leading zeros fails the release
+job with a message naming the value. `cargo bk new --first-release X.Y.Z` writes the key.
+
 ### Beta and main flow
 
 With `flow = "beta"`, features merge into `Beta` through pull requests, and `Beta` is promoted to
