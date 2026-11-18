@@ -6,7 +6,24 @@ pub mod notices;
 pub mod stage;
 
 use crate::os::Os;
+use crate::workspace::PackageMeta;
 use anyhow::{Result, bail};
+use buildkit::Version;
+use std::path::Path;
+
+/// What every package builder needs.
+pub struct PackageCtx<'a> {
+    /// The workspace root.
+    pub root: &'a Path,
+    /// The staged install tree, `<root>/build/stage`.
+    pub stage: &'a Path,
+    /// The directory the package is written to.
+    pub out: &'a Path,
+    pub meta: &'a PackageMeta,
+    pub kebab: &'a str,
+    pub maintainer: &'a str,
+    pub version: &'a Version,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {

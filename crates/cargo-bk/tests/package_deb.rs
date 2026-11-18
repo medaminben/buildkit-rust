@@ -4,6 +4,7 @@ use cargo_bk::commands::new::{Flow, NewArgs, new_project};
 use cargo_bk::commands::package;
 use cargo_bk::exec::{FakeRunner, SystemRunner};
 use cargo_bk::os::Os;
+use cargo_bk::package::PackageCtx;
 use cargo_bk::package::deb::{build_deb, deb_control, deb_version};
 use cargo_bk::workspace::{PackageMeta, Workspace};
 use std::fs;
@@ -192,17 +193,22 @@ fn modes_are_explicit() {
         fs::write(stage.join(f), "bin").unwrap();
     }
     let r = FakeRunner::new().with_output("dpkg-deb", 0, "");
-    build_deb(
-        tmp.path(),
-        &stage,
-        &tmp.path().join("build/dist"),
-        &ws.package_meta().unwrap(),
-        "foo-bar",
-        "acme",
-        "1.0.0",
-        &r,
-    )
-    .unwrap();
+    let meta = ws.package_meta().unwrap();
+    let version = buildkit::Version {
+        numeric: "1.0.0".into(),
+        full: "1.0.0".into(),
+    };
+    let dist = tmp.path().join("build/dist");
+    let ctx = PackageCtx {
+        root: tmp.path(),
+        stage: &stage,
+        out: &dist,
+        meta: &meta,
+        kebab: "foo-bar",
+        maintainer: "acme",
+        version: &version,
+    };
+    build_deb(&ctx, &r).unwrap();
     let mode = |p: &str| {
         fs::metadata(tmp.path().join("build/deb-root").join(p))
             .unwrap()

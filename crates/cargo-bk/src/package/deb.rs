@@ -1,5 +1,6 @@
 //! The Debian package format.
 
+use super::PackageCtx;
 use crate::exec::{Cmd, Runner};
 use crate::workspace::PackageMeta;
 use anyhow::{Context, Result, bail};
@@ -42,17 +43,17 @@ pub fn deb_control(
 ///
 /// # Errors
 /// When a file is missing, a file operation fails, or `dpkg-deb` fails.
-#[allow(clippy::too_many_arguments)]
-pub fn build_deb(
-    root: &Path,
-    stage: &Path,
-    out: &Path,
-    meta: &PackageMeta,
-    kebab: &str,
-    maintainer: &str,
-    version: &str,
-    r: &dyn Runner,
-) -> Result<PathBuf> {
+pub fn build_deb(ctx: &PackageCtx, r: &dyn Runner) -> Result<PathBuf> {
+    let PackageCtx {
+        root,
+        stage,
+        out,
+        meta,
+        kebab,
+        maintainer,
+        ..
+    } = *ctx;
+    let version = deb_version(&ctx.version.full);
     let pkg = root.join("build").join("deb-root");
     if pkg.exists() {
         fs::remove_dir_all(&pkg).with_context(|| format!("cannot clear {}", pkg.display()))?;
@@ -89,7 +90,7 @@ pub fn build_deb(
     let size = installed_size_kib(&pkg);
     write(
         &pkg.join("DEBIAN/control"),
-        deb_control(meta, kebab, maintainer, version, size).as_bytes(),
+        deb_control(meta, kebab, maintainer, &version, size).as_bytes(),
     )?;
     set_modes(&pkg, &meta.apps)?;
 

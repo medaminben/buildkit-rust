@@ -4,7 +4,7 @@ use crate::exec::{Cmd, Runner};
 use crate::names::ProductName;
 use crate::os::Os;
 use crate::package::stage::{apply_stage, plan_stage};
-use crate::package::{Format, deb, formats_for, notices};
+use crate::package::{Format, PackageCtx, deb, formats_for, notices};
 use crate::workspace::Workspace;
 use anyhow::{Result, bail};
 use buildkit::Git;
@@ -73,19 +73,19 @@ pub fn run(
         .next()
         .filter(|o| !o.is_empty())
         .unwrap_or(&kebab);
+    let ctx = PackageCtx {
+        root: &ws.root,
+        stage: &stage,
+        out: &dist,
+        meta: &meta,
+        kebab: &kebab,
+        maintainer,
+        version: &version,
+    };
     let mut built = Vec::new();
     for format in formats {
         let path = match format {
-            Format::Deb => deb::build_deb(
-                &ws.root,
-                &stage,
-                &dist,
-                &meta,
-                &kebab,
-                maintainer,
-                &deb::deb_version(&version.full),
-                r,
-            )?,
+            Format::Deb => deb::build_deb(&ctx, r)?,
             Format::AppImage | Format::Inno => bail!("not implemented yet"),
         };
         writeln!(out, "{}", path.display())?;
