@@ -112,3 +112,20 @@ fn manual_works_in_a_path_with_spaces() {
     product(&dir);
     bk(&dir).args(["manual", "--check"]).assert().success();
 }
+
+#[test]
+fn write_tool_removes_stale_files_and_skips_tests_and_capture() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dest = tmp.path().join("build/tools/manual");
+    fs::create_dir_all(dest.join("old")).unwrap();
+    fs::write(dest.join("stale.py"), "x").unwrap();
+    fs::write(dest.join("old/deep.txt"), "x").unwrap();
+    cargo_bk::commands::manual::write_tool(&dest).unwrap();
+    assert!(!dest.join("stale.py").exists());
+    assert!(!dest.join("old").exists());
+    assert!(dest.join("build_manual.py").is_file());
+    assert!(dest.join("template.html").is_file());
+    assert!(!dest.join("test_build_manual.py").exists());
+    assert!(!dest.join("capture.sh").exists());
+    cargo_bk::commands::manual::write_tool(&dest).unwrap();
+}

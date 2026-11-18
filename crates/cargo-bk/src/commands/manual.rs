@@ -7,6 +7,7 @@ use crate::workspace::Workspace;
 use anyhow::{Context, Result, bail};
 use include_dir::{Dir, include_dir};
 use std::fs;
+use std::path::Path;
 
 static MANUAL_TOOL: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../tools/manual");
 
@@ -14,7 +15,7 @@ fn is_tool_file(name: &str) -> bool {
     !(name.starts_with("test_") || name == "capture.sh")
 }
 
-fn write_tool(dir: &Dir, dest: &std::path::Path) -> Result<()> {
+fn write_dir(dir: &Dir, dest: &Path) -> Result<()> {
     fs::create_dir_all(dest)?;
     for file in dir.files() {
         let name = file
@@ -27,7 +28,29 @@ fn write_tool(dir: &Dir, dest: &std::path::Path) -> Result<()> {
                 .with_context(|| format!("cannot write {name}"))?;
         }
     }
+    for sub in dir.dirs() {
+        let name = sub
+            .path()
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        write_dir(sub, &dest.join(name))?;
+    }
     Ok(())
+}
+
+/// Replaces `dest` with the embedded manual tool, so nothing from an older
+/// cargo-bk version lingers.
+///
+/// # Errors
+/// When `dest` cannot be cleaned or written.
+pub fn write_tool(dest: &Path) -> Result<()> {
+    match fs::remove_dir_all(dest) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e).with_context(|| format!("cannot clean {}", dest.display())),
+    }
+    write_dir(&MANUAL_TOOL, dest)
 }
 
 /// Writes the manual tool to `build/tools/manual/` and runs it on `docs/manual`.
@@ -37,7 +60,7 @@ fn write_tool(dir: &Dir, dest: &std::path::Path) -> Result<()> {
 pub fn run(ws: &Workspace, r: &dyn Runner, os: Os, check: bool) -> Result<()> {
     let python = find_python(r, os)?;
     let tool_dir = ws.root.join("build/tools/manual");
-    write_tool(&MANUAL_TOOL, &tool_dir)?;
+    write_tool(&tool_dir)?;
 
     let mut cmd = python;
     cmd.args
