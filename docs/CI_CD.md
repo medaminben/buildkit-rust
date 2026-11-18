@@ -2,7 +2,7 @@
 
 buildkit-rust ships three reusable workflows. A product calls them from short workflow files
 and pins them to a buildkit-rust tag, for example
-`medaminben/buildkit-rust/.github/workflows/ci.yml@v0.1.0`. `cargo bk new` writes these callers.
+`medaminben/buildkit-rust/.github/workflows/ci.yml@v0.2.0`. `cargo bk new` writes these callers.
 The header comment of each workflow in `.github/workflows/` is the reference for its inputs.
 
 The tag in every `uses:` line must equal `[workspace.metadata.buildkit] version` in the product's
@@ -72,7 +72,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   ci:
-    uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v0.1.0
+    uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v0.2.0
     permissions:
       contents: read
     with:
@@ -104,7 +104,7 @@ on:
     - cron: "17 4 * * 1"
 jobs:
   codeql:
-    uses: medaminben/buildkit-rust/.github/workflows/codeql.yml@v0.1.0
+    uses: medaminben/buildkit-rust/.github/workflows/codeql.yml@v0.2.0
     permissions:
       security-events: write
       actions: read
@@ -133,7 +133,7 @@ on:
     branches: [main, Beta]
 jobs:
   release:
-    uses: medaminben/buildkit-rust/.github/workflows/release.yml@v0.1.0
+    uses: medaminben/buildkit-rust/.github/workflows/release.yml@v0.2.0
     permissions:
       contents: write
       actions: write
