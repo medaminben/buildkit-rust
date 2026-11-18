@@ -138,4 +138,4 @@ so that product's manual has generated screenshots.
 
 Until it ships, put screenshots into `docs/manual/assets/` by hand.
 
-Tracking issue: to be linked.
+Tracking issue: [#2](https://github.com/medaminben/buildkit-rust/issues/2).
