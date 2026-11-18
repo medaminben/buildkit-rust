@@ -472,3 +472,59 @@ fn first_release_rerun_same_value_is_a_noop_and_other_value_is_refused() {
         fs::read_to_string(t.path().join("Cargo.toml")).unwrap()
     );
 }
+
+#[test]
+fn first_release_on_an_existing_product_without_the_key_matches_a_first_run() {
+    let mut with_flag = args(Some("Foo"), &[]);
+    with_flag.first_release = Some("2.0.0".into());
+    with_flag.fixed_bk_version = Some("0.2.0".into());
+    let fresh = tempfile::tempdir().unwrap();
+    new_project(fresh.path(), &with_flag, &FakeRunner::new()).unwrap();
+    let expected = fs::read_to_string(fresh.path().join("Cargo.toml")).unwrap();
+
+    let t = tempfile::tempdir().unwrap();
+    let mut a = args(Some("Foo"), &[]);
+    a.fixed_bk_version = Some("0.2.0".into());
+    new_project(t.path(), &a, &FakeRunner::new()).unwrap();
+    assert!(
+        !fs::read_to_string(t.path().join("Cargo.toml"))
+            .unwrap()
+            .contains("first-release")
+    );
+    a.first_release = Some("2.0.0".into());
+    new_project(t.path(), &a, &FakeRunner::new()).unwrap();
+
+    let text = fs::read_to_string(t.path().join("Cargo.toml")).unwrap();
+    let doc: toml_edit::DocumentMut = text.parse().unwrap();
+    assert_eq!(
+        doc["workspace"]["metadata"]["buildkit"]["first-release"].as_str(),
+        Some("2.0.0"),
+        "{text}"
+    );
+    assert_eq!(
+        doc["workspace"]["package"]["version"].as_str(),
+        Some("2.0.0"),
+        "{text}"
+    );
+    assert_eq!(text, expected);
+}
+
+#[test]
+fn first_release_on_a_product_with_no_buildkit_table_does_not_panic() {
+    let t = tempfile::tempdir().unwrap();
+    let dir = t.path().join("foo");
+    fs::create_dir(&dir).unwrap();
+    // `is_product` only looks for the marker text, so a commented-out table gets this far.
+    fs::write(
+        dir.join("Cargo.toml"),
+        "[workspace]\nmembers = []\n# [workspace.metadata.buildkit]\n",
+    )
+    .unwrap();
+    let mut a = args(Some("Foo"), &[]);
+    a.first_release = Some("2.0.0".into());
+    a.fixed_bk_version = Some("0.2.0".into());
+    let e = new_project(&dir, &a, &FakeRunner::new())
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("[workspace.metadata.buildkit]"), "{e}");
+}

@@ -132,7 +132,13 @@ fn check_first_release_unchanged(dir: &Path, version: &str) -> Result<()> {
     let doc: toml_edit::DocumentMut = text
         .parse()
         .with_context(|| format!("parsing {}", path.display()))?;
-    if let Some(old) = doc["workspace"]["metadata"]["buildkit"]["first-release"].as_str()
+    let old = doc
+        .get("workspace")
+        .and_then(|w| w.get("metadata"))
+        .and_then(|m| m.get("buildkit"))
+        .and_then(|b| b.get("first-release"))
+        .and_then(|v| v.as_str());
+    if let Some(old) = old
         && old != version
     {
         bail!(
