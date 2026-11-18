@@ -92,12 +92,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-about
+          tool: cargo-about,cargo-deny
       - name: Python unit tests
         run: |
           set -euo pipefail
           python -m unittest discover -s tools/release -p 'test_*.py'
           python -m unittest discover -s tools/manual -p 'test_*.py'
+      - name: Own docs and dependencies
+        run: |
+          set -euo pipefail
+          # The README and docs/ examples must name the version in Cargo.toml.
+          cargo run -q -p cargo-bk -- check-pins
+          # The manual under docs/manual.
+          cargo run -q -p cargo-bk -- manual --check
+          cargo deny --config lint/deny.toml check
       - name: cargo test, including the ignored real-build tests
         run: cargo test --workspace --locked -- --include-ignored
         env:

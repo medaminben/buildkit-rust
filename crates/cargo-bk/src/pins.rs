@@ -24,8 +24,18 @@ const LINT_HEADER: &str = "# buildkit-rust v";
 pub enum PinSite {
     Metadata,
     GitDep,
-    Workflow { file: PathBuf, line: usize },
-    LintHeader { file: PathBuf },
+    Workflow {
+        file: PathBuf,
+        line: usize,
+    },
+    LintHeader {
+        file: PathBuf,
+    },
+    /// An example in buildkit-rust's own README or docs.
+    Doc {
+        file: PathBuf,
+        line: usize,
+    },
 }
 
 /// One place that pins buildkit-rust; `version` has no leading `v`.
@@ -61,6 +71,66 @@ fn workflow_version_range(line: &str) -> Option<(usize, usize)> {
     }
     let start = line.len() - after.len();
     Some((start, start + len))
+}
+
+/// Markers that precede a version `vX.Y.Z` in an example of buildkit-rust's own docs.
+const DOC_MARKERS: [&str; 2] = ["buildkit-rust/.github/workflows/", "--tag v"];
+
+/// Byte ranges of the versions in a doc line: the text after `@v` of a workflow reference
+/// and after `--tag v`. A placeholder such as `vX.Y.Z` has no digit first and is skipped.
+fn doc_version_ranges(line: &str) -> Vec<(usize, usize)> {
+    let mut found = Vec::new();
+    for marker in DOC_MARKERS {
+        for (at, _) in line.match_indices(marker) {
+            let after_marker = at + marker.len();
+            let start = if marker.ends_with('/') {
+                let rest = &line[after_marker..];
+                let name_len = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')))
+                    .unwrap_or(rest.len());
+                if !rest[name_len..].starts_with("@v") {
+                    continue;
+                }
+                after_marker + name_len + "@v".len()
+            } else {
+                after_marker
+            };
+            let rest = &line[start..];
+            if !rest.starts_with(|c: char| c.is_ascii_digit()) {
+                continue;
+            }
+            let len = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+')))
+                .unwrap_or(rest.len());
+            let version = rest[..len].trim_end_matches(['.', '-']);
+            found.push((start, start + version.len()));
+        }
+    }
+    found.sort_unstable();
+    found
+}
+
+/// buildkit-rust itself, recognised by its `crates/cargo-bk`: it has no product workflows
+/// to pin, but its docs show examples that must name the version it pins.
+#[must_use]
+pub fn is_buildkit_rust(root: &Path) -> bool {
+    root.join("crates/cargo-bk").is_dir()
+}
+
+/// `README.md` and every `.md` under `docs/`, sorted.
+fn doc_files(root: &Path) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = walkdir::WalkDir::new(root.join("docs"))
+        .into_iter()
+        .filter_map(Result::ok)
+        .map(walkdir::DirEntry::into_path)
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "md"))
+        .collect();
+    let readme = root.join("README.md");
+    if readme.is_file() {
+        files.push(readme);
+    }
+    files.sort();
+    files
 }
 
 fn workflow_files(root: &Path) -> Vec<PathBuf> {
@@ -121,6 +191,23 @@ pub fn find_pins(ws: &Workspace) -> Result<Vec<Pin>> {
                     },
                     version: line[a..b].to_string(),
                 });
+            }
+        }
+    }
+    if is_buildkit_rust(&ws.root) {
+        for file in doc_files(&ws.root) {
+            let text = std::fs::read_to_string(&file)
+                .with_context(|| format!("cannot read {}", file.display()))?;
+            for (i, line) in text.lines().enumerate() {
+                for (a, b) in doc_version_ranges(line) {
+                    pins.push(Pin {
+                        site: PinSite::Doc {
+                            file: file.clone(),
+                            line: i + 1,
+                        },
+                        version: line[a..b].to_string(),
+                    });
+                }
             }
         }
     }

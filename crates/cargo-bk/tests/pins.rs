@@ -2,6 +2,7 @@ use cargo_bk::commands::new::{Flow, NewArgs, new_project};
 use cargo_bk::exec::FakeRunner;
 use cargo_bk::pins::{PinSite, find_pins, mismatches, upgrade};
 use cargo_bk::workspace::Workspace;
+use predicates::prelude::PredicateBooleanExt;
 use std::fs;
 use std::path::Path;
 
@@ -282,4 +283,88 @@ fn pin_mismatch_with_drift_exits_one_with_both_messages() {
     let err = stderr(&out);
     assert!(err.contains("ci.yml:4: v0.0.1"), "{err}");
     assert!(err.contains("warning: .editorconfig differs"), "{err}");
+}
+
+/// A folder shaped like buildkit-rust itself: `crates/cargo-bk`, a metadata pin and docs.
+fn own_repo(dir: &Path, readme: &str, guide: &str) {
+    fs::create_dir_all(dir.join("crates/cargo-bk")).unwrap();
+    fs::create_dir_all(dir.join("docs/nested")).unwrap();
+    fs::write(
+        dir.join("Cargo.toml"),
+        "[workspace]\n[workspace.metadata.buildkit]\nversion = \"1.2.3\"\n",
+    )
+    .unwrap();
+    fs::write(dir.join("README.md"), readme).unwrap();
+    fs::write(dir.join("docs/nested/guide.md"), guide).unwrap();
+}
+
+#[test]
+fn own_docs_examples_are_checked() {
+    let t = tempfile::tempdir().unwrap();
+    own_repo(
+        t.path(),
+        "uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v1.2.3\n`cargo install --git U --tag v1.2.3 cargo-bk`.\n",
+        "intro\nuses: medaminben/buildkit-rust/.github/workflows/release.yml@v1.2.4\ncargo install --tag v1.2.5. Done\n--tag vX.Y.Z and @vX.Y.Z are placeholders\n",
+    );
+    let ws = Workspace::find(t.path()).unwrap();
+    let pins = find_pins(&ws).unwrap();
+    let docs: Vec<(String, usize, String)> = pins
+        .iter()
+        .filter_map(|p| match &p.site {
+            PinSite::Doc { file, line } => Some((
+                file.strip_prefix(t.path())
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+                *line,
+                p.version.clone(),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        docs,
+        [
+            ("README.md".to_string(), 1, "1.2.3".to_string()),
+            ("README.md".to_string(), 2, "1.2.3".to_string()),
+            ("docs/nested/guide.md".to_string(), 2, "1.2.4".to_string()),
+            ("docs/nested/guide.md".to_string(), 3, "1.2.5".to_string()),
+        ]
+    );
+    let out = cargo_bk(t.path(), &["check-pins"]).failure().code(1);
+    let err = String::from_utf8(out.get_output().stderr.clone()).unwrap();
+    assert!(
+        err.contains("docs/nested/guide.md:2: v1.2.4, expected v1.2.3"),
+        "{err}"
+    );
+    assert!(
+        err.contains("docs/nested/guide.md:3: v1.2.5, expected v1.2.3"),
+        "{err}"
+    );
+    assert!(!err.contains("README.md"), "{err}");
+}
+
+#[test]
+fn docs_of_a_product_are_not_scanned() {
+    let t = tempfile::tempdir().unwrap();
+    own_repo(t.path(), "--tag v9.9.9\n", "--tag v9.9.9\n");
+    fs::remove_dir(t.path().join("crates/cargo-bk")).unwrap();
+    let ws = Workspace::find(t.path()).unwrap();
+    assert!(
+        find_pins(&ws)
+            .unwrap()
+            .iter()
+            .all(|p| !matches!(p.site, PinSite::Doc { .. }))
+    );
+    cargo_bk(t.path(), &["check-pins"]).success();
+}
+
+#[test]
+fn own_lint_files_are_the_originals_and_give_no_drift_warning() {
+    let t = tempfile::tempdir().unwrap();
+    own_repo(t.path(), "plain\n", "plain\n");
+    fs::write(t.path().join("rustfmt.toml"), "edition = \"2024\"\n").unwrap();
+    cargo_bk(t.path(), &["check-pins"])
+        .success()
+        .stderr(predicates::str::contains("differs").not());
 }
