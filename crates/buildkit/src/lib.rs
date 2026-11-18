@@ -127,12 +127,30 @@ pub fn build_script_lines(root: &Path, fallback: &str, git: &dyn Git) -> Vec<Str
     ];
     if let Some(gitdir) = git_dir(root, git, "--git-dir") {
         let common = git_dir(root, git, "--git-common-dir").unwrap_or_else(|| gitdir.clone());
-        lines.push(rerun(&gitdir.join("HEAD")));
+        // Cargo reruns on every build for a path that does not exist, so
+        // only existing paths are named.
+        let mut push = |p: PathBuf| {
+            if p.exists() {
+                lines.push(rerun(&p));
+            }
+        };
+        push(gitdir.join("HEAD"));
         if let Some(r) = git.run(root, &["symbolic-ref", "-q", "HEAD"]) {
-            lines.push(rerun(&common.join(r)));
+            let loose = common.join(&r);
+            if loose.exists() {
+                push(loose);
+            } else {
+                // A packed branch: a commit recreates the loose ref in its
+                // directory.
+                push(
+                    loose
+                        .parent()
+                        .map_or_else(|| common.join("refs"), Path::to_path_buf),
+                );
+            }
         }
-        lines.push(rerun(&common.join("packed-refs")));
-        lines.push(rerun(&common.join("refs").join("tags")));
+        push(common.join("packed-refs"));
+        push(common.join("refs").join("tags"));
     }
     lines
 }
