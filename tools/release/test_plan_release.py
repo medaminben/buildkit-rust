@@ -1,3 +1,5 @@
+import contextlib
+import io
 import os
 import subprocess
 import tempfile
@@ -128,6 +130,46 @@ class PlanReleaseTest(unittest.TestCase):
             sha = commit(repo, "feat: only")
             self.assertEqual(plan_release.notes(repo, "main", sha), "- feat: only\n")
             self.assertEqual(plan_release.plan_tag(repo, [], "main", "", sha), "v0.1.0")
+
+
+class FirstReleaseTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = self._tmp.name
+        git(self.repo, "init", "-q", "-b", "main")
+        git(self.repo, "config", "tag.gpgsign", "false")
+        git(self.repo, "config", "commit.gpgsign", "false")
+        self.sha = commit(self.repo, "feat: first")
+
+    def plan(self, labels, base, head=""):
+        return plan_release.plan_tag(self.repo, labels, base, head, self.sha, first_release="2.0.0")
+
+    def test_first_merge_into_beta_is_beta_1(self):
+        self.assertEqual(self.plan([], "Beta"), "v2.0.0-beta.1")
+
+    def test_next_beta_continues_the_series(self):
+        git(self.repo, "tag", "-a", "v2.0.0-beta.1", "-m", "r")
+        self.sha = commit(self.repo, "feat: more")
+        self.assertEqual(self.plan(["semver:minor"], "Beta"), "v2.0.0-beta.2")
+
+    def test_promotion_releases_the_first_release(self):
+        git(self.repo, "tag", "-a", "v2.0.0-beta.3", "-m", "r")
+        self.sha = commit(self.repo, "Merge Beta")
+        self.assertEqual(self.plan([], "main", head="Beta"), "v2.0.0")
+
+    def test_first_merge_into_main_is_the_first_release(self):
+        self.assertEqual(self.plan(["semver:patch"], "main"), "v2.0.0")
+
+    def test_without_first_release_the_initial_version_is_0_1_0(self):
+        self.assertEqual(plan_release.plan_tag(self.repo, [], "main", "", self.sha), "v0.1.0")
+
+    def test_cli_passes_first_release(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = plan_release.main(["--repo", self.repo, "--base", "Beta", "--sha", self.sha,
+                                      "--first-release", "2.0.0"])
+        self.assertEqual((code, out.getvalue().strip()), (0, "v2.0.0-beta.1"))
 
 
 if __name__ == "__main__":
