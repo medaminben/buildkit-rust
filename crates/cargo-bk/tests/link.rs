@@ -186,6 +186,40 @@ fn original_without_trailing_newline_comes_back() {
 }
 
 #[test]
+fn lines_added_after_the_block_survive_unlink() {
+    let (_t, product, checkout) = setup("buildkit-rust");
+    let cfg = config(&product);
+    fs::create_dir_all(cfg.parent().unwrap()).unwrap();
+    fs::write(&cfg, "[build]\njobs = 4").unwrap();
+    link(&product, &checkout, None, false).unwrap();
+    let mut text = fs::read_to_string(&cfg).unwrap();
+    text.push_str("after = 1\n");
+    fs::write(&cfg, text).unwrap();
+    assert!(unlink(&product).unwrap());
+    let left = fs::read_to_string(&cfg).unwrap();
+    assert_eq!(left, "[build]\njobs = 4\nafter = 1\n");
+    assert!(left.parse::<toml_edit::DocumentMut>().is_ok());
+}
+
+#[test]
+fn missing_dependency_is_reported() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("prod");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("Cargo.toml"),
+        "[workspace]\n[workspace.metadata.buildkit]\nversion = \"1.0.0\"\n[workspace.dependencies]\nserde = \"1\"\n",
+    )
+    .unwrap();
+    let mut ws = Workspace::find(&dir).unwrap();
+    let e = restore_dep(&mut ws).unwrap_err().to_string();
+    assert_eq!(
+        e,
+        "buildkit dependency is missing from [workspace.dependencies]"
+    );
+}
+
+#[test]
 fn table_form_dependency_is_refused() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("prod");

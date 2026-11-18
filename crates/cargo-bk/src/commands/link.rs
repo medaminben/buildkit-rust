@@ -35,22 +35,27 @@ fn config_path(product: &Path) -> Result<PathBuf> {
 const ADDED_EOL: &str = "added newline";
 
 /// `text` without the marked block, or `None` when there is no block. A block that
-/// `link` put after a final line without newline takes that newline with it.
+/// `link` put after a final line without newline takes that newline with it, as long
+/// as nothing follows the block.
 fn without_block(text: &str, file: &Path) -> Result<Option<String>> {
     let mut out = String::new();
     let mut open: Option<usize> = None;
     let mut found = false;
+    let mut added_eol = false;
+    let mut offset = 0;
     for (i, line) in text.split_inclusive('\n').enumerate() {
+        offset += line.len();
         let t = line.trim();
         if open.is_none() && t.starts_with(MARK_START) {
             open = Some(i + 1);
             found = true;
-            if t.contains(ADDED_EOL) && out.ends_with('\n') {
-                out.pop();
-            }
+            added_eol = t.contains(ADDED_EOL);
         } else if open.is_some() {
             if t == MARK_END {
                 open = None;
+                if added_eol && text[offset..].trim().is_empty() && out.ends_with('\n') {
+                    out.pop();
+                }
             }
         } else {
             out.push_str(line);
@@ -162,12 +167,18 @@ pub fn unlink(product: &Path) -> Result<bool> {
 
 /// Replaces `git`, `tag` and `path` of the inline buildkit dependency; other keys stay.
 fn set_dep(ws: &mut Workspace, edit: impl FnOnce(&mut InlineTable)) -> Result<()> {
-    let Some(Item::Value(Value::InlineTable(table))) = ws
+    let Some(item) = ws
         .doc
         .get_mut("workspace")
         .and_then(|w| w.get_mut("dependencies"))
         .and_then(|d| d.get_mut("buildkit"))
     else {
+        bail!("buildkit dependency is missing from [workspace.dependencies]");
+    };
+    if item.is_none() {
+        bail!("buildkit dependency is missing from [workspace.dependencies]");
+    }
+    let Item::Value(Value::InlineTable(table)) = item else {
         bail!("buildkit dependency is not an inline table; edit it by hand");
     };
     for key in ["git", "tag", "path"] {
@@ -180,7 +191,8 @@ fn set_dep(ws: &mut Workspace, edit: impl FnOnce(&mut InlineTable)) -> Result<()
 /// Rewrites the root manifest's buildkit dependency to the local checkout.
 ///
 /// # Errors
-/// When `checkout` is not a buildkit-rust checkout or the dependency is missing.
+/// When `checkout` is not a buildkit-rust checkout, or the dependency is missing or
+/// not an inline table.
 pub fn rewrite_dep(ws: &mut Workspace, checkout: &Path) -> Result<()> {
     let abs = checked_checkout(checkout)?;
     set_dep(ws, |t| {
