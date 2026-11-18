@@ -52,9 +52,10 @@ fn writes_workspace_crates_and_console_app() {
 
     let mut files = Vec::new();
     all_files(tmp.path(), &mut files);
-    // about.hbs is a handlebars template for cargo-about and keeps its braces; the icon is binary.
+    // about.hbs is a handlebars template for cargo-about and keeps its braces, ci.yml its
+    // `${{ github.ref }}`; the icon is binary.
     for f in files.iter().filter(|f| {
-        !["about.hbs", "icon.png", "foo.iss"]
+        !["about.hbs", "icon.png", "foo.iss", "ci.yml"]
             .iter()
             .any(|n| f.ends_with(n))
     }) {
@@ -216,7 +217,8 @@ fn without_repo_there_are_no_community_files() {
     ] {
         assert!(!tmp.path().join(f).exists(), "{f} should not exist");
     }
-    assert!(!tmp.path().join(".github").exists());
+    assert!(!tmp.path().join(".github/ISSUE_TEMPLATE").exists());
+    assert!(!tmp.path().join(".github/pull_request_template.md").exists());
     assert!(tmp.path().join("scripts/setup.sh").is_file());
 }
 
@@ -313,4 +315,40 @@ fn iss_output_name_matches_the_packager() {
     let t = include_str!("../../../templates/project/installer/__kebab__.iss.tmpl");
     assert!(t.contains("#define MyAppFileName \"{{name_file}}\""));
     assert!(t.contains("OutputBaseFilename={#MyAppFileName}_Setup_{#AppVersion}"));
+}
+
+fn workflow(dir: &Path, name: &str) -> String {
+    fs::read_to_string(dir.join(".github/workflows").join(name)).unwrap()
+}
+
+#[test]
+fn caller_workflows_pin_the_reusable_ones_and_follow_the_flow() {
+    let version = env!("BK_VERSION");
+    let prefix = "medaminben/buildkit-rust/.github/workflows";
+    let direct = tempfile::tempdir().unwrap();
+    new_project(direct.path(), &with_repo(Flow::Direct), &FakeRunner::new()).unwrap();
+    let beta = tempfile::tempdir().unwrap();
+    new_project(beta.path(), &with_repo(Flow::Beta), &FakeRunner::new()).unwrap();
+    for name in ["ci.yml", "codeql.yml"] {
+        let d = workflow(direct.path(), name);
+        assert!(
+            d.contains(&format!("uses: {prefix}/{name}@v{version}")),
+            "{d}"
+        );
+        assert!(d.contains("branches: [main]"), "{d}");
+        assert!(workflow(beta.path(), name).contains("branches: [main, Beta]"));
+    }
+    let ci = workflow(direct.path(), "ci.yml");
+    assert!(ci.contains("group: ci-${{ github.ref }}"), "{ci}");
+    assert!(workflow(direct.path(), "codeql.yml").contains("security-events: write"));
+}
+
+#[test]
+fn caller_workflows_exist_without_repo_and_have_no_placeholder() {
+    let tmp = tempfile::tempdir().unwrap();
+    new_project(tmp.path(), &args(Some("Foo"), &[]), &FakeRunner::new()).unwrap();
+    for name in ["ci.yml", "codeql.yml"] {
+        assert!(!workflow(tmp.path(), name).contains("{{branches"));
+        assert!(!workflow(tmp.path(), name).contains("{{bk_version"));
+    }
 }

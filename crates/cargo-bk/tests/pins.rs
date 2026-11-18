@@ -7,7 +7,8 @@ use std::path::Path;
 
 const OWN: &str = env!("BK_VERSION");
 
-fn product(dir: &Path) {
+/// A freshly generated product, with the caller workflows as `new` writes them.
+fn generated_product(dir: &Path) {
     let args = NewArgs {
         name: Some("Foo".into()),
         crates: vec![],
@@ -16,8 +17,12 @@ fn product(dir: &Path) {
         no_build: true,
     };
     new_project(dir, &args, &FakeRunner::new()).unwrap();
+}
+
+/// A product whose `ci.yml` is a minimal caller with a known line layout.
+fn product(dir: &Path) {
+    generated_product(dir);
     let wf = dir.join(".github/workflows");
-    fs::create_dir_all(&wf).unwrap();
     fs::write(
         wf.join("ci.yml"),
         format!(
@@ -38,7 +43,7 @@ fn cargo_bk(dir: &Path, args: &[&str]) -> assert_cmd::assert::Assert {
 #[test]
 fn fresh_product_has_no_mismatch() {
     let t = tempfile::tempdir().unwrap();
-    product(t.path());
+    generated_product(t.path());
     let ws = Workspace::find(t.path()).unwrap();
     let pins = find_pins(&ws).unwrap();
     assert!(pins.iter().any(|p| p.site == PinSite::Metadata));
@@ -53,6 +58,11 @@ fn fresh_product_has_no_mismatch() {
             .count(),
         3
     );
+    let workflow_pins = pins
+        .iter()
+        .filter(|p| matches!(p.site, PinSite::Workflow { .. }))
+        .count();
+    assert_eq!(workflow_pins, 2, "ci.yml and codeql.yml");
     assert_eq!(mismatches(&pins).len(), 0);
     cargo_bk(t.path(), &["check-pins"]).success();
 }
@@ -161,7 +171,7 @@ fn quoted_and_commented_pins() {
         .unwrap()
         .into_iter()
         .filter_map(|p| match p.site {
-            PinSite::Workflow { line, .. } => Some((line, p.version)),
+            PinSite::Workflow { file, line } if file == ci => Some((line, p.version)),
             _ => None,
         })
         .collect();

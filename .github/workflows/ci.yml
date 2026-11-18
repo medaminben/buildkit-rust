@@ -1,0 +1,646 @@
+# Reusable CI workflow for buildkit-rust products.
+#
+# Caller example (the generated .github/workflows/ci.yml looks like this):
+#   on:
+#     push:
+#       branches: [main, Beta]
+#     pull_request:
+#   concurrency:                 # set this in the caller, not here
+#     group: ci-${{ github.ref }}
+#     cancel-in-progress: true
+#   jobs:
+#     ci:
+#       uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v0.1.0
+#       permissions:
+#         contents: read
+#       with:
+#         apt-packages: "libfoo-dev"   # empty: the product's system-deps.apt
+#         coverage: true
+#         miri-crates: "foo-core"
+#         package: true            # build the installers on every run
+#         xvfb: true               # cargo test under xvfb-run (GUI tests)
+#         timeout-minutes: 45      # per job (a caller job cannot set it)
+#         format-exclude: "vendor/**"
+#
+# Inputs (all optional):
+#   apt-packages         Extra apt packages for the Linux jobs, separated by spaces.
+#                        Empty (default): [workspace.metadata.bk.package]
+#                        system-deps.apt of the product. The build dependencies of
+#                        eframe (libxkbcommon-dev, libwayland-dev, libx11-dev,
+#                        libxcursor-dev, libxrandr-dev, libxi-dev, libgl1-mesa-dev)
+#                        are always installed.
+#   lint                 Master switch: false turns all four lint checks off, true
+#                        lets the single inputs decide. Default true.
+#   lint-format          cargo fmt --check (needs lint: true). Default true.
+#   lint-clippy          cargo clippy --all-targets -- -D warnings (needs lint: true).
+#                        Default true.
+#   lint-deny            cargo deny check (needs lint: true). Default true.
+#   lint-commits         commitlint on PR commits (needs lint: true). Default true.
+#   format-exclude       Git pathspec globs that the format check skips, separated by
+#                        spaces or newlines, e.g. vendor/**. With excludes the check
+#                        runs rustfmt on the remaining .rs files, so a skipped file
+#                        that a checked file declares as a module is still read.
+#   xvfb                 Run cargo test under xvfb-run -a on Linux. Default false.
+#   timeout-minutes      Time limit of each job. Default 45.
+#   release              Also run cargo test --release in the test job. Default true.
+#   coverage             Run cargo llvm-cov and upload the lcov report. Default false.
+#   miri-crates          Crates (package names, separated by spaces or commas) that
+#                        cargo +nightly miri test runs on. Empty (default): no miri job.
+#   package              Run cargo bk package on both OSes and upload the installers.
+#                        Proves the installers still build. Default false.
+#   buildkit-repository  Repository that provides cargo-bk. Default
+#                        medaminben/buildkit-rust.
+#   buildkit-ref         Tag, branch or SHA of buildkit-rust to use. Empty (default):
+#                        cargo-bk comes from the tag v<version> of the product's
+#                        [workspace.metadata.buildkit] pin and the product builds
+#                        against its own pinned git tag. Set: cargo-bk is installed
+#                        from that ref, buildkit-rust is checked out at that ref into
+#                        .buildkit-rust and cargo bk link --rewrite-dep points the
+#                        product at the checkout (for a pre-release that is not
+#                        published as a tag yet). This is the counterpart of
+#                        BUILDKIT_DIR in buildkit.
+#   working-directory    Folder of the product inside the repository. Default "."
+#                        (used by the self-test on a committed fixture product).
+#
+# Jobs:
+#   lint      Format, clippy, cargo deny, cargo bk manual --check, cargo bk check-pins
+#             and commitlint on PR commits. Skipped when nothing is enabled.
+#   test      ubuntu-latest and windows-latest: cargo build --locked, cargo test
+#             --locked and, with release: true, cargo test --release --locked.
+#   coverage  Optional: cargo llvm-cov, lcov report as artifact.
+#   miri      Optional: cargo +nightly miri test on the crates in miri-crates.
+#   package   Optional: cargo bk package on both OSes, installers as artifacts.
+#
+# CodeQL lives in its own workflow, codeql.yml, so that this one does not need
+# security-events: write from the caller.
+name: CI (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      apt-packages:
+        description: "Extra apt packages, separated by spaces. Empty: the product's system-deps.apt"
+        type: string
+        default: ""
+      lint:
+        description: "Master switch for the four lint checks: false turns all of them off, true lets lint-format, lint-clippy, lint-deny and lint-commits decide"
+        type: boolean
+        default: true
+      lint-format:
+        description: "Run cargo fmt --check (needs lint: true)"
+        type: boolean
+        default: true
+      lint-clippy:
+        description: "Run cargo clippy --all-targets -- -D warnings (needs lint: true)"
+        type: boolean
+        default: true
+      lint-deny:
+        description: "Run cargo deny check (needs lint: true)"
+        type: boolean
+        default: true
+      lint-commits:
+        description: "Run commitlint on PR commits (needs lint: true)"
+        type: boolean
+        default: true
+      format-exclude:
+        description: "Git pathspec globs that the format check skips, separated by spaces or newlines"
+        type: string
+        default: ""
+      xvfb:
+        description: "Run cargo test under xvfb-run -a on Linux (for GUI tests)"
+        type: boolean
+        default: false
+      timeout-minutes:
+        description: "Time limit of each job in minutes"
+        type: number
+        default: 45
+      release:
+        description: "Also run cargo test --release in the test job"
+        type: boolean
+        default: true
+      coverage:
+        description: "Run cargo llvm-cov and upload the lcov report"
+        type: boolean
+        default: false
+      miri-crates:
+        description: "Crates to run cargo +nightly miri test on, separated by spaces or commas. Empty: no miri job"
+        type: string
+        default: ""
+      package:
+        description: "Run cargo bk package on both OSes and upload the installers"
+        type: boolean
+        default: false
+      buildkit-repository:
+        description: "Repository that provides cargo-bk"
+        type: string
+        default: "medaminben/buildkit-rust"
+      buildkit-ref:
+        description: "Tag, branch or SHA of buildkit-rust to install cargo-bk from and link the product to. Empty: the product's own pin"
+        type: string
+        default: ""
+      working-directory:
+        description: "Folder of the product inside the repository"
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Build dependencies of eframe on Linux, always installed.
+  BUILD_APT: libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+
+jobs:
+  lint:
+    if: inputs.lint && (inputs.lint-format || inputs.lint-clippy || inputs.lint-deny || inputs.lint-commits)
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve the buildkit-rust ref
+        id: bk
+        env:
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+          APT_INPUT: ${{ inputs.apt-packages }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, tomllib
+          with open("Cargo.toml", "rb") as f:
+              ws = tomllib.load(f)["workspace"]["metadata"]
+          ref = os.environ["BUILDKIT_REF"] or "v" + ws["buildkit"]["version"]
+          apt = os.environ["APT_INPUT"] or " ".join(ws.get("bk", {}).get("package", {}).get("system-deps", {}).get("apt", []))
+          print("ref=" + ref)
+          print("apt=" + apt)
+          PY
+      - name: Install system packages
+        if: inputs.lint-clippy
+        env:
+          APT_PACKAGES: ${{ steps.bk.outputs.apt }}
+        run: |
+          set -euo pipefail
+          read -r -a extra <<< "$APT_PACKAGES"
+          read -r -a build <<< "$BUILD_APT"
+          sudo apt-get update
+          sudo apt-get install -y "${build[@]}" "${extra[@]}"
+      - name: Install the toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ inputs.working-directory }}
+          key: bk-${{ steps.bk.outputs.ref }}
+      - name: Install cargo-bk
+        env:
+          REPO: ${{ inputs.buildkit-repository }}
+          REF: ${{ steps.bk.outputs.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF" =~ ^v[0-9] ]]; then
+            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
+          else
+            cargo install --git "https://github.com/$REPO" --rev "$REF" cargo-bk --locked --force
+          fi
+      - name: Check the pins
+        run: cargo bk check-pins
+      - uses: actions/checkout@v4
+        if: inputs.buildkit-ref != ''
+        with:
+          repository: ${{ inputs.buildkit-repository }}
+          ref: ${{ inputs.buildkit-ref }}
+          path: .buildkit-rust
+      - name: Link the product to the buildkit-rust checkout
+        if: inputs.buildkit-ref != ''
+        run: |
+          set -euo pipefail
+          echo "/.buildkit-rust/" >> "$(git rev-parse --git-dir)/info/exclude"
+          cargo bk link --rewrite-dep "$GITHUB_WORKSPACE/.buildkit-rust"
+          # Brings Cargo.lock in line with the path dependency.
+          cargo metadata --format-version 1 > /dev/null
+      - name: Manual check
+        run: cargo bk manual --check
+      - name: Check formatting
+        if: inputs.lint-format
+        env:
+          FORMAT_EXCLUDE: ${{ inputs.format-exclude }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FORMAT_EXCLUDE//[[:space:]]/}" ]; then
+            cargo fmt --all --check
+          else
+            # Excludes are git pathspecs, one ':(exclude)<glob>' each.
+            exclude_text="${FORMAT_EXCLUDE//$'\n'/ }"
+            read -r -a excludes <<< "$exclude_text"
+            specs=('*.rs')
+            for glob in "${excludes[@]}"; do specs+=(":(exclude)$glob"); done
+            mapfile -t files < <(git ls-files -- "${specs[@]}")
+            edition="$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['workspace']['package']['edition'])")"
+            if ((${#files[@]})); then
+              rustfmt --check --edition "$edition" "${files[@]}"
+            fi
+          fi
+      - name: Clippy
+        if: inputs.lint-clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - uses: taiki-e/install-action@v2
+        if: inputs.lint-deny
+        with:
+          tool: cargo-deny
+      - name: Cargo deny
+        if: inputs.lint-deny
+        run: cargo deny check
+      - name: Commitlint (PR commits)
+        if: inputs.lint-commits && github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/commitlint" --ignore-scripts --no-package-lock \
+            @commitlint/cli@19 @commitlint/config-conventional@19
+          config=""
+          for candidate in commitlint.config.cjs commitlint.config.js commitlint.config.mjs \
+              lint/commitlint.config.cjs .commitlintrc.json .commitlintrc.js .commitlintrc.cjs; do
+            if [ -e "$candidate" ]; then config="$candidate"; break; fi
+          done
+          if [ -z "$config" ]; then echo "::error::no commitlint config found"; exit 1; fi
+          echo "Using $config"
+          export NODE_PATH="$RUNNER_TEMP/commitlint/node_modules"
+          "$RUNNER_TEMP/commitlint/node_modules/.bin/commitlint" --config "$config" \
+            --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve the buildkit-rust ref
+        id: bk
+        env:
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+          APT_INPUT: ${{ inputs.apt-packages }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, tomllib
+          with open("Cargo.toml", "rb") as f:
+              ws = tomllib.load(f)["workspace"]["metadata"]
+          ref = os.environ["BUILDKIT_REF"] or "v" + ws["buildkit"]["version"]
+          apt = os.environ["APT_INPUT"] or " ".join(ws.get("bk", {}).get("package", {}).get("system-deps", {}).get("apt", []))
+          print("ref=" + ref)
+          print("apt=" + apt)
+          PY
+      - name: Install system packages
+        if: runner.os == 'Linux'
+        env:
+          APT_PACKAGES: ${{ steps.bk.outputs.apt }}
+          XVFB: ${{ inputs.xvfb }}
+        run: |
+          set -euo pipefail
+          read -r -a extra <<< "$APT_PACKAGES"
+          read -r -a build <<< "$BUILD_APT"
+          if [ "$XVFB" = true ]; then build+=(xvfb); fi
+          sudo apt-get update
+          sudo apt-get install -y "${build[@]}" "${extra[@]}"
+      - name: Install the toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ inputs.working-directory }}
+          key: bk-${{ steps.bk.outputs.ref }}
+      - name: Install cargo-bk
+        env:
+          REPO: ${{ inputs.buildkit-repository }}
+          REF: ${{ steps.bk.outputs.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF" =~ ^v[0-9] ]]; then
+            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
+          else
+            cargo install --git "https://github.com/$REPO" --rev "$REF" cargo-bk --locked --force
+          fi
+      - uses: actions/checkout@v4
+        if: inputs.buildkit-ref != ''
+        with:
+          repository: ${{ inputs.buildkit-repository }}
+          ref: ${{ inputs.buildkit-ref }}
+          path: .buildkit-rust
+      - name: Link the product to the buildkit-rust checkout
+        if: inputs.buildkit-ref != ''
+        run: |
+          set -euo pipefail
+          echo "/.buildkit-rust/" >> "$(git rev-parse --git-dir)/info/exclude"
+          cargo bk link --rewrite-dep "$GITHUB_WORKSPACE/.buildkit-rust"
+          # Brings Cargo.lock in line with the path dependency.
+          cargo metadata --format-version 1 > /dev/null
+      - name: Build
+        run: cargo build --locked
+      - name: Test
+        env:
+          XVFB: ${{ inputs.xvfb }}
+        run: |
+          set -euo pipefail
+          run=()
+          if [ "$XVFB" = true ] && [ "$RUNNER_OS" = Linux ]; then run=(xvfb-run -a); fi
+          "${run[@]}" cargo test --locked
+      - name: Test (release)
+        if: inputs.release
+        env:
+          XVFB: ${{ inputs.xvfb }}
+        run: |
+          set -euo pipefail
+          run=()
+          if [ "$XVFB" = true ] && [ "$RUNNER_OS" = Linux ]; then run=(xvfb-run -a); fi
+          "${run[@]}" cargo test --release --locked
+
+  coverage:
+    if: inputs.coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve the buildkit-rust ref
+        id: bk
+        env:
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+          APT_INPUT: ${{ inputs.apt-packages }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, tomllib
+          with open("Cargo.toml", "rb") as f:
+              ws = tomllib.load(f)["workspace"]["metadata"]
+          ref = os.environ["BUILDKIT_REF"] or "v" + ws["buildkit"]["version"]
+          apt = os.environ["APT_INPUT"] or " ".join(ws.get("bk", {}).get("package", {}).get("system-deps", {}).get("apt", []))
+          print("ref=" + ref)
+          print("apt=" + apt)
+          PY
+      - name: Install system packages
+        env:
+          APT_PACKAGES: ${{ steps.bk.outputs.apt }}
+          XVFB: ${{ inputs.xvfb }}
+        run: |
+          set -euo pipefail
+          read -r -a extra <<< "$APT_PACKAGES"
+          read -r -a build <<< "$BUILD_APT"
+          if [ "$XVFB" = true ]; then build+=(xvfb); fi
+          sudo apt-get update
+          sudo apt-get install -y "${build[@]}" "${extra[@]}"
+      - name: Install the toolchain
+        run: |
+          set -euo pipefail
+          rustup show active-toolchain || rustup toolchain install
+          rustup component add llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ inputs.working-directory }}
+          key: bk-${{ steps.bk.outputs.ref }}
+      - name: Install cargo-bk
+        env:
+          REPO: ${{ inputs.buildkit-repository }}
+          REF: ${{ steps.bk.outputs.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF" =~ ^v[0-9] ]]; then
+            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
+          else
+            cargo install --git "https://github.com/$REPO" --rev "$REF" cargo-bk --locked --force
+          fi
+      - uses: actions/checkout@v4
+        if: inputs.buildkit-ref != ''
+        with:
+          repository: ${{ inputs.buildkit-repository }}
+          ref: ${{ inputs.buildkit-ref }}
+          path: .buildkit-rust
+      - name: Link the product to the buildkit-rust checkout
+        if: inputs.buildkit-ref != ''
+        run: |
+          set -euo pipefail
+          echo "/.buildkit-rust/" >> "$(git rev-parse --git-dir)/info/exclude"
+          cargo bk link --rewrite-dep "$GITHUB_WORKSPACE/.buildkit-rust"
+          # Brings Cargo.lock in line with the path dependency.
+          cargo metadata --format-version 1 > /dev/null
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Coverage
+        env:
+          XVFB: ${{ inputs.xvfb }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/coverage
+          run=()
+          if [ "$XVFB" = true ]; then run=(xvfb-run -a); fi
+          "${run[@]}" cargo llvm-cov --locked --workspace --lcov --output-path build/coverage/lcov.info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: ${{ inputs.working-directory }}/build/coverage/lcov.info
+          if-no-files-found: error
+
+  miri:
+    if: inputs.miri-crates != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve the buildkit-rust ref
+        id: bk
+        env:
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+          APT_INPUT: ${{ inputs.apt-packages }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, tomllib
+          with open("Cargo.toml", "rb") as f:
+              ws = tomllib.load(f)["workspace"]["metadata"]
+          ref = os.environ["BUILDKIT_REF"] or "v" + ws["buildkit"]["version"]
+          apt = os.environ["APT_INPUT"] or " ".join(ws.get("bk", {}).get("package", {}).get("system-deps", {}).get("apt", []))
+          print("ref=" + ref)
+          print("apt=" + apt)
+          PY
+      - name: Install system packages
+        env:
+          APT_PACKAGES: ${{ steps.bk.outputs.apt }}
+        run: |
+          set -euo pipefail
+          read -r -a extra <<< "$APT_PACKAGES"
+          read -r -a build <<< "$BUILD_APT"
+          sudo apt-get update
+          sudo apt-get install -y "${build[@]}" "${extra[@]}"
+      - name: Install the toolchains
+        run: |
+          set -euo pipefail
+          rustup show active-toolchain || rustup toolchain install
+          rustup toolchain install nightly --profile minimal --component miri,rust-src
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ inputs.working-directory }}
+          key: bk-${{ steps.bk.outputs.ref }}
+      - name: Install cargo-bk
+        env:
+          REPO: ${{ inputs.buildkit-repository }}
+          REF: ${{ steps.bk.outputs.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF" =~ ^v[0-9] ]]; then
+            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
+          else
+            cargo install --git "https://github.com/$REPO" --rev "$REF" cargo-bk --locked --force
+          fi
+      - uses: actions/checkout@v4
+        if: inputs.buildkit-ref != ''
+        with:
+          repository: ${{ inputs.buildkit-repository }}
+          ref: ${{ inputs.buildkit-ref }}
+          path: .buildkit-rust
+      - name: Link the product to the buildkit-rust checkout
+        if: inputs.buildkit-ref != ''
+        run: |
+          set -euo pipefail
+          echo "/.buildkit-rust/" >> "$(git rev-parse --git-dir)/info/exclude"
+          cargo bk link --rewrite-dep "$GITHUB_WORKSPACE/.buildkit-rust"
+          # Brings Cargo.lock in line with the path dependency.
+          cargo metadata --format-version 1 > /dev/null
+      - name: Miri
+        env:
+          MIRI_CRATES: ${{ inputs.miri-crates }}
+        run: |
+          set -euo pipefail
+          cargo +nightly miri setup
+          crates_text="${MIRI_CRATES//,/ }"
+          read -r -a crates <<< "$crates_text"
+          for crate in "${crates[@]}"; do
+            cargo +nightly miri test --locked -p "$crate"
+          done
+
+  package:
+    if: inputs.package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    env:
+      # appimagetool runs without FUSE on the runner.
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve the buildkit-rust ref
+        id: bk
+        env:
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+          APT_INPUT: ${{ inputs.apt-packages }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, tomllib
+          with open("Cargo.toml", "rb") as f:
+              ws = tomllib.load(f)["workspace"]["metadata"]
+          ref = os.environ["BUILDKIT_REF"] or "v" + ws["buildkit"]["version"]
+          apt = os.environ["APT_INPUT"] or " ".join(ws.get("bk", {}).get("package", {}).get("system-deps", {}).get("apt", []))
+          print("ref=" + ref)
+          print("apt=" + apt)
+          PY
+      - name: Install system packages
+        if: runner.os == 'Linux'
+        env:
+          APT_PACKAGES: ${{ steps.bk.outputs.apt }}
+        run: |
+          set -euo pipefail
+          read -r -a extra <<< "$APT_PACKAGES"
+          read -r -a build <<< "$BUILD_APT"
+          sudo apt-get update
+          sudo apt-get install -y "${build[@]}" "${extra[@]}"
+      - name: Install the toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ inputs.working-directory }}
+          key: bk-${{ steps.bk.outputs.ref }}
+      - name: Install cargo-bk
+        env:
+          REPO: ${{ inputs.buildkit-repository }}
+          REF: ${{ steps.bk.outputs.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF" =~ ^v[0-9] ]]; then
+            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
+          else
+            cargo install --git "https://github.com/$REPO" --rev "$REF" cargo-bk --locked --force
+          fi
+      - uses: actions/checkout@v4
+        if: inputs.buildkit-ref != ''
+        with:
+          repository: ${{ inputs.buildkit-repository }}
+          ref: ${{ inputs.buildkit-ref }}
+          path: .buildkit-rust
+      - name: Link the product to the buildkit-rust checkout
+        if: inputs.buildkit-ref != ''
+        run: |
+          set -euo pipefail
+          echo "/.buildkit-rust/" >> "$(git rev-parse --git-dir)/info/exclude"
+          cargo bk link --rewrite-dep "$GITHUB_WORKSPACE/.buildkit-rust"
+          # Brings Cargo.lock in line with the path dependency.
+          cargo metadata --format-version 1 > /dev/null
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - name: Package
+        run: cargo bk package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: ${{ inputs.working-directory }}/build/dist/*
+          if-no-files-found: error
