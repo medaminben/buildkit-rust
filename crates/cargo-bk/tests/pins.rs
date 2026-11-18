@@ -419,3 +419,67 @@ fn upgrade_command_reports_a_failed_cargo_update() {
     let e = cargo_bk::commands::upgrade::run(&mut ws, OWN, &r, &mut Vec::new()).unwrap_err();
     assert_eq!(e.to_string(), "cargo update -p buildkit failed: offline");
 }
+
+#[test]
+fn upgrade_in_buildkit_rust_moves_metadata_and_docs_to_any_version() {
+    let t = tempfile::tempdir().unwrap();
+    own_repo(
+        t.path(),
+        "uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v1.2.3 and --tag v1.2.3\ngit clone --branch v1.2.3 URL\n",
+        "intro\n--tag v1.2.3. Done\n--tag vX.Y.Z is a placeholder\n",
+    );
+    fs::create_dir_all(t.path().join(".github/workflows")).unwrap();
+    fs::write(
+        t.path().join(".github/workflows/ci.yml"),
+        "# Caller example:\n#   uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v1.2.3\nname: CI\n",
+    )
+    .unwrap();
+    fs::write(t.path().join("rustfmt.toml"), "edition = \"2024\"\n").unwrap();
+    let mut ws = Workspace::find(t.path()).unwrap();
+    let mut changed = upgrade(&mut ws, "v1.3.0").unwrap();
+    changed.sort();
+    assert_eq!(
+        changed,
+        [
+            t.path().join(".github/workflows/ci.yml"),
+            t.path().join("Cargo.toml"),
+            t.path().join("README.md"),
+            t.path().join("docs/nested/guide.md"),
+        ]
+    );
+    assert_eq!(
+        fs::read_to_string(t.path().join("README.md")).unwrap(),
+        "uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v1.3.0 and --tag v1.3.0\ngit clone --branch v1.3.0 URL\n"
+    );
+    assert_eq!(
+        fs::read_to_string(t.path().join(".github/workflows/ci.yml")).unwrap(),
+        "# Caller example:\n#   uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v1.3.0\nname: CI\n"
+    );
+    assert_eq!(
+        fs::read_to_string(t.path().join("docs/nested/guide.md")).unwrap(),
+        "intro\n--tag v1.3.0. Done\n--tag vX.Y.Z is a placeholder\n"
+    );
+    assert_eq!(
+        fs::read_to_string(t.path().join("rustfmt.toml")).unwrap(),
+        "edition = \"2024\"\n",
+        "buildkit-rust's own lint files are originals, not pinned copies"
+    );
+    let ws = Workspace::find(t.path()).unwrap();
+    assert_eq!(ws.bk_version().as_deref(), Some("1.3.0"));
+    assert_eq!(mismatches(&find_pins(&ws).unwrap()).len(), 0);
+}
+
+#[test]
+fn upgrade_in_buildkit_rust_refuses_a_version_that_is_not_x_y_z() {
+    let t = tempfile::tempdir().unwrap();
+    own_repo(t.path(), "--tag v1.2.3\n", "\n");
+    for bad in ["1.3", "1.3.0-beta.1", "01.3.0", "1.3.x"] {
+        let mut ws = Workspace::find(t.path()).unwrap();
+        let e = upgrade(&mut ws, bad).unwrap_err().to_string();
+        assert!(e.contains("X.Y.Z"), "{bad}: {e}");
+    }
+    assert_eq!(
+        fs::read_to_string(t.path().join("README.md")).unwrap(),
+        "--tag v1.2.3\n"
+    );
+}

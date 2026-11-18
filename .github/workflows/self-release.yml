@@ -1,0 +1,83 @@
+# buildkit-rust's own release. Products use the reusable release.yml, which takes the bump
+# from the pull request's semver:* label. buildkit-rust instead releases the version in its root
+# Cargo.toml ([workspace.metadata.buildkit] version), which every pin and the reported cargo-bk
+# version follow, so tag and code cannot disagree.
+#
+# To release: in a pull request, run `cargo bk upgrade X.Y.Z` (moves the version and every pin)
+# and merge it. On the push to main this job tags vX.Y.Z on that commit and creates the GitHub
+# release, with the commit subjects since the previous tag as notes. When vX.Y.Z already
+# exists, it does nothing, so pull requests that do not bump the version release nothing.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: self-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Read the version
+        id: version
+        run: |
+          set -euo pipefail
+          python -I - <<'PY' >> "$GITHUB_OUTPUT"
+          import re, sys, tomllib
+          sys.stdout.reconfigure(newline="\n")
+          with open("Cargo.toml", "rb") as f:
+              v = tomllib.load(f)["workspace"]["metadata"]["buildkit"]["version"]
+          if not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", v):
+              sys.exit(f"[workspace.metadata.buildkit] version {v!r} is not X.Y.Z")
+          print(f"tag=v{v}")
+          PY
+      - name: Tag and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "::notice::$TAG is already released; bump the version with cargo bk upgrade to release."
+              exit 0
+            fi
+            echo "::notice::$TAG exists without a release (a re-run); creating the release."
+          else
+            latest="$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+            if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$latest" "$TAG" | sort -V | tail -n 1)" != "$TAG" ]; then
+              echo "::error::$TAG is lower than the latest release $latest"
+              exit 1
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Release $TAG" "$SHA"
+            git push origin "refs/tags/$TAG"
+          fi
+          target="$(git rev-parse "refs/tags/$TAG^{commit}")"
+          python3 -B -I - "$target" > "$RUNNER_TEMP/notes.md" <<'PY'
+          import sys
+          sys.path.insert(0, "tools/release")
+          from plan_release import notes
+          print(notes(".", "main", sys.argv[1]))
+          PY
+          gh release create "$TAG" --verify-tag --target "$target" --title "$TAG" \
+            --notes-file "$RUNNER_TEMP/notes.md"
