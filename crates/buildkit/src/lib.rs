@@ -23,17 +23,21 @@ pub struct Version {
     pub full: String,
 }
 
+/// Drops the `\\?\` and `\\?\UNC\` prefixes Windows adds to canonical paths.
+fn strip_verbatim(s: &str) -> String {
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    if let Some(rest) = s.strip_prefix(r"\\?\") {
+        return rest.to_string();
+    }
+    s.to_string()
+}
+
 /// Canonical path, without the `\\?\` prefix Windows adds.
 fn canonical(p: &Path) -> Option<PathBuf> {
     let c = std::fs::canonicalize(p).ok()?;
-    let s = c.to_string_lossy();
-    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
-        return Some(PathBuf::from(format!(r"\\{rest}")));
-    }
-    if let Some(rest) = s.strip_prefix(r"\\?\") {
-        return Some(PathBuf::from(rest));
-    }
-    Some(c)
+    Some(PathBuf::from(strip_verbatim(&c.to_string_lossy())))
 }
 
 fn from_tag(source_dir: &Path, git: &dyn Git) -> Option<Version> {
@@ -57,11 +61,12 @@ fn from_tag(source_dir: &Path, git: &dyn Git) -> Option<Version> {
     let numeric_part = tag.strip_prefix('v')?;
     let numeric = numeric_part.split('-').next()?.to_string();
     let mut full = numeric_part.to_string();
-    let range = format!("{tag}..HEAD");
+    // The full ref name: a bare tag name is ambiguous with a branch of that name.
+    let range = format!("refs/tags/{tag}..HEAD");
     let ahead: u64 = git
-        .run(source_dir, &["rev-list", "--count", &range])
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
+        .run(source_dir, &["rev-list", "--count", &range])?
+        .parse()
+        .ok()?;
     if ahead > 0 {
         let sha = git.run(source_dir, &["rev-parse", "--short=7", "HEAD"])?;
         full = format!("{full}+{ahead}.g{sha}");
@@ -82,15 +87,139 @@ pub fn resolve(source_dir: &Path, fallback: &str, git: &dyn Git) -> Version {
     })
 }
 
-/// `build.rs` entry point. Resolves the version of the package being built and
-/// exports it as `BK_VERSION` and `BK_VERSION_FULL`.
+fn has_workspace(manifest: &Path) -> bool {
+    std::fs::read_to_string(manifest).is_ok_and(|t| t.lines().any(|l| l.trim() == "[workspace]"))
+}
+
+/// The first ancestor of `manifest_dir` (itself included) whose `Cargo.toml`
+/// has a `[workspace]` table, or `manifest_dir` for a single-crate product.
+#[must_use]
+pub fn emit_root(manifest_dir: &Path) -> PathBuf {
+    manifest_dir
+        .ancestors()
+        .find(|d| has_workspace(&d.join("Cargo.toml")))
+        .unwrap_or(manifest_dir)
+        .to_path_buf()
+}
+
+fn rerun(p: &Path) -> String {
+    format!("cargo:rerun-if-changed={}", p.display())
+}
+
+/// A git-reported directory, resolved against `root` when relative.
+fn git_dir(root: &Path, git: &dyn Git, flag: &str) -> Option<PathBuf> {
+    let out = git.run(root, &["rev-parse", flag])?;
+    let p = PathBuf::from(out);
+    Some(if p.is_absolute() { p } else { root.join(p) })
+}
+
+/// The `cargo:` lines for a build script: the two version variables, and
+/// rerun triggers on HEAD, the branch HEAD points to, `packed-refs` and the
+/// tags. Linked worktrees keep their own HEAD but share refs with the main
+/// repository, hence the two directories.
+#[must_use]
+pub fn build_script_lines(root: &Path, fallback: &str, git: &dyn Git) -> Vec<String> {
+    let v = resolve(root, fallback, git);
+    let mut lines = vec![
+        format!("cargo:rustc-env=BK_VERSION={}", v.numeric),
+        format!("cargo:rustc-env=BK_VERSION_FULL={}", v.full),
+        "cargo:rerun-if-changed=build.rs".to_string(),
+    ];
+    if let Some(gitdir) = git_dir(root, git, "--git-dir") {
+        let common = git_dir(root, git, "--git-common-dir").unwrap_or_else(|| gitdir.clone());
+        lines.push(rerun(&gitdir.join("HEAD")));
+        if let Some(r) = git.run(root, &["symbolic-ref", "-q", "HEAD"]) {
+            lines.push(rerun(&common.join(r)));
+        }
+        lines.push(rerun(&common.join("packed-refs")));
+        lines.push(rerun(&common.join("refs").join("tags")));
+    }
+    lines
+}
+
+/// `build.rs` entry point. Resolves the version of the product being built
+/// (the workspace root above `CARGO_MANIFEST_DIR`) and exports it as
+/// `BK_VERSION` and `BK_VERSION_FULL`.
 ///
 /// # Panics
 /// When `CARGO_MANIFEST_DIR` is not set, i.e. outside a build script.
 pub fn emit_version(fallback: Fallback) {
     let dir = std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set");
-    let v = resolve(Path::new(&dir), fallback.0, &SystemGit);
-    println!("cargo:rustc-env=BK_VERSION={}", v.numeric);
-    println!("cargo:rustc-env=BK_VERSION_FULL={}", v.full);
-    println!("cargo:rerun-if-changed=build.rs");
+    let root = emit_root(Path::new(&dir));
+    for l in build_script_lines(&root, fallback.0, &SystemGit) {
+        println!("{l}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Fake(Vec<(&'static str, Option<&'static str>)>);
+    impl Git for Fake {
+        fn run(&self, _: &Path, args: &[&str]) -> Option<String> {
+            self.0
+                .iter()
+                .find(|(k, _)| args.contains(k))
+                .and_then(|(_, v)| v.map(str::to_string))
+        }
+    }
+
+    fn fake(count: Option<&'static str>, sha: Option<&'static str>) -> Fake {
+        Fake(vec![
+            ("--show-toplevel", Some(".")),
+            ("log", Some("tag: refs/tags/v1.0.0")),
+            ("--count", count),
+            ("--short=7", sha),
+        ])
+    }
+
+    #[test]
+    fn strips_verbatim_prefix() {
+        assert_eq!(strip_verbatim(r"\\?\C:\a\b"), r"C:\a\b");
+    }
+
+    #[test]
+    fn strips_verbatim_unc_prefix() {
+        assert_eq!(strip_verbatim(r"\\?\UNC\srv\share"), r"\\srv\share");
+    }
+
+    #[test]
+    fn leaves_plain_paths() {
+        assert_eq!(strip_verbatim("/home/a"), "/home/a");
+        assert_eq!(strip_verbatim(r"C:\a"), r"C:\a");
+    }
+
+    #[test]
+    fn failed_ahead_count_falls_back() {
+        let v = resolve(Path::new("."), "9.9.9", &fake(None, Some("abcdef0")));
+        assert_eq!(v.numeric, "9.9.9");
+        assert_eq!(v.full, "9.9.9-dev");
+    }
+
+    #[test]
+    fn failed_sha_falls_back() {
+        let v = resolve(Path::new("."), "9.9.9", &fake(Some("3"), None));
+        assert_eq!(v.full, "9.9.9-dev");
+    }
+
+    #[test]
+    fn ahead_count_uses_the_full_ref() {
+        struct Spy;
+        impl Git for Spy {
+            fn run(&self, _: &Path, args: &[&str]) -> Option<String> {
+                match args[0] {
+                    "rev-parse" if args[1] == "--show-toplevel" => Some(".".into()),
+                    "log" => Some("tag: refs/tags/v1.0.0".into()),
+                    "rev-list" => {
+                        assert_eq!(args[2], "refs/tags/v1.0.0..HEAD");
+                        Some("0".into())
+                    }
+                    _ => None,
+                }
+            }
+        }
+        let v = resolve(Path::new("."), "9.9.9", &Spy);
+        assert_eq!(v.full, "1.0.0");
+    }
 }
