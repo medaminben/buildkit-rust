@@ -59,6 +59,9 @@ pub enum Command {
         /// Rewrite the root Cargo.toml dependency instead of patching the parent cargo config.
         #[arg(long)]
         rewrite_dep: bool,
+        /// Write the patch even when the parent folder is your home folder.
+        #[arg(long)]
+        force: bool,
     },
     /// Undo `link`.
     Unlink {
