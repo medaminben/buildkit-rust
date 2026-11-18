@@ -19,6 +19,7 @@ path = "src/main.rs"
 anyhow = "1"
 buildkit = { path = "../buildkit" }
 clap = { version = "4", features = ["derive"] }
+include_dir = "0.7.4"
 toml_edit = "0.22"
 
 [build-dependencies]

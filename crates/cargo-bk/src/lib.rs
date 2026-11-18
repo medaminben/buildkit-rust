@@ -5,6 +5,7 @@ pub mod commands;
 pub mod exec;
 pub mod names;
 pub mod os;
+pub mod templates;
 pub mod workspace;
 
 use anyhow::{Result, bail};
