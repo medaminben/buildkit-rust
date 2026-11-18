@@ -74,10 +74,11 @@ fn workflow_version_range(line: &str) -> Option<(usize, usize)> {
 }
 
 /// Markers that precede a version `vX.Y.Z` in an example of buildkit-rust's own docs.
-const DOC_MARKERS: [&str; 2] = ["buildkit-rust/.github/workflows/", "--tag v"];
+const DOC_MARKERS: [&str; 3] = ["buildkit-rust/.github/workflows/", "--tag v", "--branch v"];
 
 /// Byte ranges of the versions in a doc line: the text after `@v` of a workflow reference
-/// and after `--tag v`. A placeholder such as `vX.Y.Z` has no digit first and is skipped.
+/// and after `--tag v` or `--branch v`. A placeholder such as `vX.Y.Z` has no digit first and
+/// is skipped.
 fn doc_version_ranges(line: &str) -> Vec<(usize, usize)> {
     let mut found = Vec::new();
     for marker in DOC_MARKERS {
@@ -110,6 +111,17 @@ fn doc_version_ranges(line: &str) -> Vec<(usize, usize)> {
     found
 }
 
+/// `X.Y.Z` without leading zeros, the form of a stable release tag.
+fn is_release_version(v: &str) -> bool {
+    let parts: Vec<&str> = v.split('.').collect();
+    parts.len() == 3
+        && parts.iter().all(|p| {
+            !p.is_empty()
+                && p.bytes().all(|b| b.is_ascii_digit())
+                && (*p == "0" || !p.starts_with('0'))
+        })
+}
+
 /// buildkit-rust itself, recognised by its `crates/cargo-bk`: it has no product workflows
 /// to pin, but its docs show examples that must name the version it pins.
 #[must_use]
@@ -117,7 +129,9 @@ pub fn is_buildkit_rust(root: &Path) -> bool {
     root.join("crates/cargo-bk").is_dir()
 }
 
-/// `README.md` and every `.md` under `docs/`, sorted.
+/// buildkit-rust's own files with version examples: `README.md`, every `.md` under `docs/`
+/// and its workflows, whose header comments show the caller (as comments they hold no
+/// product pin), sorted.
 fn doc_files(root: &Path) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = walkdir::WalkDir::new(root.join("docs"))
         .into_iter()
@@ -130,6 +144,7 @@ fn doc_files(root: &Path) -> Vec<PathBuf> {
     if readme.is_file() {
         files.push(readme);
     }
+    files.extend(workflow_files(root));
     files.sort();
     files
 }
@@ -180,18 +195,22 @@ pub fn find_pins(ws: &Workspace) -> Result<Vec<Pin>> {
             version: tag.trim_start_matches('v').to_string(),
         });
     }
-    for file in workflow_files(&ws.root) {
-        scan_lines(
-            &file,
-            |l| workflow_version_range(l).into_iter().collect(),
-            |line| PinSite::Workflow {
-                file: file.clone(),
-                line,
-            },
-            &mut pins,
-        )?;
+    let own = is_buildkit_rust(&ws.root);
+    // In buildkit-rust the workflows are scanned with the docs below.
+    if !own {
+        for file in workflow_files(&ws.root) {
+            scan_lines(
+                &file,
+                |l| workflow_version_range(l).into_iter().collect(),
+                |line| PinSite::Workflow {
+                    file: file.clone(),
+                    line,
+                },
+                &mut pins,
+            )?;
+        }
     }
-    if is_buildkit_rust(&ws.root) {
+    if own {
         for file in doc_files(&ws.root) {
             scan_lines(
                 &file,
@@ -299,6 +318,28 @@ pub fn lint_drift(root: &Path, github_actions: bool) -> Result<Vec<String>> {
     Ok(warnings)
 }
 
+/// Replaces every version `ranges` finds in a line of `file` with `version`.
+fn rewrite_versions(
+    file: &Path,
+    ranges: impl Fn(&str) -> Vec<(usize, usize)>,
+    version: &str,
+    changed: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let old =
+        std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
+    let new: String = old
+        .split_inclusive('\n')
+        .map(|line| {
+            let mut line = line.to_string();
+            for (a, b) in ranges(&line).into_iter().rev() {
+                line.replace_range(a..b, version);
+            }
+            line
+        })
+        .collect();
+    write_if_changed(file, &old, &new, changed)
+}
+
 fn write_if_changed(path: &Path, old: &str, new: &str, changed: &mut Vec<PathBuf>) -> Result<()> {
     if old != new {
         std::fs::write(path, new).with_context(|| format!("cannot write {}", path.display()))?;
@@ -339,14 +380,21 @@ fn set_tag(ws: &mut Workspace, version: &str) {
     replace_keeping_decor(old, Value::from(format!("v{version}")));
 }
 
-/// Moves every pin to `version`, which must be the running cargo-bk version.
+/// Moves every pin to `version`. In a product, `version` must be the running cargo-bk
+/// version. In buildkit-rust itself it is the next release, so any `X.Y.Z` is accepted, the
+/// doc examples move with it and the lint files are left alone (they are the originals).
 /// Returns the files that changed.
 ///
 /// # Errors
-/// When `version` is not the running version, or a file cannot be read or written.
+/// When `version` is not accepted, or a file cannot be read or written.
 pub fn upgrade(ws: &mut Workspace, version: &str) -> Result<Vec<PathBuf>> {
     let version = version.trim_start_matches('v');
-    if version != OWN_VERSION {
+    let own = is_buildkit_rust(&ws.root);
+    if own {
+        if !is_release_version(version) {
+            bail!("{version} is not a release version X.Y.Z");
+        }
+    } else if version != OWN_VERSION {
         bail!(
             "install cargo-bk v{version} first: cargo install --git {REPO_URL} --tag v{version} cargo-bk"
         );
@@ -360,17 +408,19 @@ pub fn upgrade(ws: &mut Workspace, version: &str) -> Result<Vec<PathBuf>> {
         ws.save()?;
         changed.push(ws.root.join("Cargo.toml"));
     }
+    if own {
+        for file in doc_files(&ws.root) {
+            rewrite_versions(&file, doc_version_ranges, version, &mut changed)?;
+        }
+        return Ok(changed);
+    }
     for file in workflow_files(&ws.root) {
-        let old = std::fs::read_to_string(&file)
-            .with_context(|| format!("cannot read {}", file.display()))?;
-        let new: String = old
-            .split_inclusive('\n')
-            .map(|line| match workflow_version_range(line) {
-                Some((a, b)) => format!("{}{version}{}", &line[..a], &line[b..]),
-                None => line.to_string(),
-            })
-            .collect();
-        write_if_changed(&file, &old, &new, &mut changed)?;
+        rewrite_versions(
+            &file,
+            |l| workflow_version_range(l).into_iter().collect(),
+            version,
+            &mut changed,
+        )?;
     }
     for name in LINT_FILES {
         let file = ws.root.join(name);
