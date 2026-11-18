@@ -1,6 +1,7 @@
 //! One module per subcommand.
 
 pub mod add;
+pub mod manual;
 pub mod new;
 pub mod version;
 

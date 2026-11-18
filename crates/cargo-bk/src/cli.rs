@@ -34,7 +34,11 @@ pub enum Command {
     /// Build the installer package.
     Package,
     /// Build the manual.
-    Manual,
+    Manual {
+        /// Check links and content; write nothing.
+        #[arg(long)]
+        check: bool,
+    },
     /// Check the toolchain and the product.
     Doctor,
     /// Check the pinned tool versions.

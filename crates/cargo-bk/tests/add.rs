@@ -188,12 +188,8 @@ fn the_cli_requires_exactly_one_app_kind() {
 
 #[test]
 fn the_generated_manual_passes_the_manual_check() {
-    let script = Path::new(&std::env::var("HOME").unwrap())
-        .join("Dokumente/dev/buildkit/tools/manual/build_manual.py");
-    if !script.is_file() {
-        eprintln!("skipped: {} not found", script.display());
-        return;
-    }
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/manual/build_manual.py");
+    assert!(script.is_file(), "{} is missing", script.display());
     let tmp = tempfile::tempdir().unwrap();
     product(tmp.path());
     let out = std::process::Command::new("python3")

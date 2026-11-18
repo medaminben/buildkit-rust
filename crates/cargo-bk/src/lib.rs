@@ -6,12 +6,14 @@ pub mod docs_rows;
 pub mod exec;
 pub mod names;
 pub mod os;
+pub mod python;
 pub mod templates;
 pub mod workspace;
 
 use anyhow::{Result, bail};
 use clap::Parser;
 use cli::{Cli, Command};
+use workspace::Workspace;
 
 /// Runs the CLI with `args` (the program name first) and returns the exit code.
 /// A leading `bk` is dropped, so `cargo bk <cmd>` and `cargo-bk <cmd>` both work.
@@ -58,6 +60,10 @@ fn run(cli: &Cli) -> Result<()> {
             let ws = commands::open_workspace(&std::env::current_dir()?)?;
             commands::add::add_app(&ws, &args.name, args.kind())?;
             Ok(())
+        }
+        Some(Command::Manual { check }) => {
+            let ws = Workspace::find(&std::env::current_dir()?)?;
+            commands::manual::run(&ws, &exec::SystemRunner, os::Os::current(), *check)
         }
         Some(_) => bail!("not implemented yet"),
         None => bail!("no command given; see cargo bk --help"),
