@@ -32,7 +32,7 @@ why it was dropped on purpose.
 | buildkit | buildkit-rust |
 |---|---|
 | `Buildkit.cmake` (module entry, `BUILDKIT_VERSION`) | **Dropped**: there are no modules to load. `cargo bk` and the `buildkit` crate are versioned by the tag the product pins |
-| `GitVersion` (`buildkit_git_version`) | The `buildkit` crate: `buildkit::emit_version(Fallback("x.y.z"))` in `build.rs` sets `BK_VERSION` and `BK_VERSION_FULL`, with the same rules. `cargo bk version` prints it |
+| `GitVersion` (`buildkit_git_version`) | The `buildkit` crate: `buildkit::emit_version("x.y.z")` in `build.rs` sets `BK_VERSION` and `BK_VERSION_FULL`, with the same rules. `cargo bk version` prints it |
 | `Dependency` (`dev_dependency`: installed, fetched or without) | **Dropped**: Cargo resolves and fetches dependencies. Git dependencies are pinned to tags, `Cargo.lock` is committed, and `cargo build --offline` replaces the offline switches |
 | `BuildLocation` (output folders in the binary dir) | `.cargo/config.toml` with `target-dir = "build/target"`, so all output stays under `build/` |
 | `BuildUtils` (`create_library`, `create_application`) | **Dropped**: a crate is a folder with a `Cargo.toml`. `cargo bk add-crate` and `cargo bk add-app` create them |

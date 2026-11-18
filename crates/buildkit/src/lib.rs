@@ -9,10 +9,6 @@ use std::path::{Path, PathBuf};
 pub use git::{Git, SystemGit, SystemGitWith};
 pub use tags::select_tag;
 
-/// The version used when git gives no tag, e.g. `Fallback("0.1.0")`.
-#[derive(Debug, Clone, Copy)]
-pub struct Fallback(pub &'static str);
-
 /// A resolved version.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Version {
@@ -157,20 +153,11 @@ pub fn build_script_lines(root: &Path, fallback: &str, git: &dyn Git) -> Vec<Str
 
 /// `build.rs` entry point. Resolves the version of the product being built
 /// (the workspace root above `CARGO_MANIFEST_DIR`) and exports it as
-/// `BK_VERSION` and `BK_VERSION_FULL`.
+/// `BK_VERSION` and `BK_VERSION_FULL`. `fallback` is the version used when git gives no tag.
 ///
 /// # Panics
 /// When `CARGO_MANIFEST_DIR` is not set, i.e. outside a build script.
-pub fn emit_version(fallback: Fallback) {
-    emit_version_with(fallback.0);
-}
-
-/// [`emit_version`] with a fallback known only at run time, e.g. read from a
-/// manifest.
-///
-/// # Panics
-/// When `CARGO_MANIFEST_DIR` is not set, i.e. outside a build script.
-pub fn emit_version_with(fallback: &str) {
+pub fn emit_version(fallback: &str) {
     let dir = std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set");
     let root = emit_root(Path::new(&dir));
     for l in build_script_lines(&root, fallback, &SystemGit) {

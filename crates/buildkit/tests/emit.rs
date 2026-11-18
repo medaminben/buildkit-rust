@@ -140,9 +140,9 @@ fn emit_root_ignores_workspace_in_other_text() {
 }
 
 #[test]
-fn emit_version_with_takes_a_runtime_fallback() {
+fn emit_version_takes_a_runtime_fallback() {
     // Cargo sets CARGO_MANIFEST_DIR for test binaries too; the lines go to the
     // captured stdout. This checks that a non-'static fallback is accepted.
     let fallback = String::from("1.2.3");
-    buildkit::emit_version_with(&fallback);
+    buildkit::emit_version(&fallback);
 }

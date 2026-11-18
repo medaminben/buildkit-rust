@@ -127,7 +127,7 @@ with the rules of buildkit. A product calls one function from its `build.rs`:
 
 ```rust
 fn main() {
-    buildkit::emit_version(buildkit::Fallback(env!("CARGO_PKG_VERSION")));
+    buildkit::emit_version(env!("CARGO_PKG_VERSION"));
 }
 ```
 

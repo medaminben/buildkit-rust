@@ -21,7 +21,7 @@ installers, shared lint configuration and the CI and release flow.
 
 ## The `buildkit` crate
 
-`buildkit::emit_version(Fallback("x.y.z"))` runs in a product's `build.rs`. It finds the
+`buildkit::emit_version("x.y.z")` runs in a product's `build.rs`. It finds the
 workspace root above `CARGO_MANIFEST_DIR`, asks `git` for the version and prints
 `cargo:rustc-env=BK_VERSION=...` and `BK_VERSION_FULL=...`, plus `cargo:rerun-if-changed` lines
 for `.git/HEAD`, the current branch ref, `packed-refs` and the tags, so a new tag or commit

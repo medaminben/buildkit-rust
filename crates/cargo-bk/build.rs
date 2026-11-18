@@ -29,7 +29,7 @@ fn main() {
     let dir = std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set");
     let manifest = Path::new(&dir).join("../../Cargo.toml");
     let fallback = root_metadata_version(&manifest);
-    buildkit::emit_version_with(&fallback);
+    buildkit::emit_version(&fallback);
     println!("cargo:rustc-env=BK_FALLBACK={fallback}");
     println!("cargo:rerun-if-changed=../../Cargo.toml");
     println!("cargo:rerun-if-changed=../../templates");
