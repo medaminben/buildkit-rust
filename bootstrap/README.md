@@ -25,7 +25,9 @@ It is safe to run again: installed packages and tools are skipped.
 | packaging | `appimagetool` (pinned, SHA-256 checked, into `~/.local/bin`), dpkg-dev |
 | editor (optional) | the VS Code extensions rust-analyzer, CodeLLDB and Even Better TOML |
 
-`cargo-bk` is installed from the clone the script lives in, so the bootstrap and `cargo bk` always come from the same tag. cargo-binstall is tried first for the other cargo tools, with a `cargo install` fallback.
+`cargo-bk` is installed from the clone the script lives in, so the bootstrap and `cargo bk` always come from the same tag. cargo-binstall is tried first for the other cargo tools, with a `cargo install` fallback. `cargo-bk` is reinstalled unless its version equals the clone's exact release tag; a clone that is not exactly at a tag always reinstalls.
+
+The last step is `cargo bk doctor` (`--machine` outside a product). It names the group or command that fixes each missing piece.
 
 Only the apt packages need `sudo`. Rust, the cargo tools and `appimagetool` go into your home directory.
 

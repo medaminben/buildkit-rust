@@ -49,7 +49,9 @@ BeforeAll {
             'llvm-cov' = 'cargo-llvm-cov'; 'about' = 'cargo-about' }
         $key = $args[0]
         if ($sub.ContainsKey($key) -and ($args -contains '--version' -or $args -contains '-V')) {
-            if (Test-StubMissing $sub[$key]) { $global:LASTEXITCODE = 1 } else { "$key 1.0.0" }
+            if (Test-StubMissing $sub[$key]) { $global:LASTEXITCODE = 1 }
+            elseif ($key -eq 'bk') { if ($global:BkVersion) { $global:BkVersion } else { '1.0.0' } }
+            else { "$key 1.0.0" }
         }
     }
     function global:code {
@@ -62,10 +64,11 @@ BeforeAll {
 
     # Run bootstrap.ps1 with the given stub state; returns the captured output as one string.
     function global:Invoke-Bootstrap {
-        param([string[]]$Missing = @(), [hashtable]$Params = @{}, [string]$Script = $script:Bootstrap)
+        param([string[]]$Missing = @(), [hashtable]$Params = @{}, [string]$Script = $script:Bootstrap, [string]$BkVersion = '')
         $global:Calls = @()
         $global:CallArgs = @()
         $global:StubMissing = $Missing
+        $global:BkVersion = $BkVersion
         $out = & $Script @Params *>&1 | Out-String
         return $out
     }
@@ -75,7 +78,7 @@ AfterAll {
     foreach ($f in 'winget', 'rustup', 'cargo', 'code', 'Write-Call', 'Test-StubMissing', 'Invoke-Bootstrap') {
         Remove-Item "function:global:$f" -ErrorAction SilentlyContinue
     }
-    Remove-Variable Calls, CallArgs, StubMissing -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable Calls, CallArgs, StubMissing, BkVersion -Scope Global -ErrorAction SilentlyContinue
 }
 
 Describe 'bootstrap.ps1' {
@@ -116,7 +119,15 @@ Describe 'bootstrap.ps1' {
 
     Context 'nothing missing' {
         It 'is idempotent' {
-            $out = Invoke-Bootstrap -Params @{ Yes = $true; WithEditor = $true }
+            # A copy without crates/ keeps the real cargo-bk crate out of it.
+            $dir = Join-Path ([IO.Path]::GetTempPath()) ('bk nocrates ' + [guid]::NewGuid())
+            New-Item -ItemType Directory -Path (Join-Path $dir 'bootstrap') -Force | Out-Null
+            Copy-Item $script:Bootstrap (Join-Path $dir 'bootstrap' 'bootstrap.ps1')
+            try {
+                $out = Invoke-Bootstrap -Params @{ Yes = $true; WithEditor = $true } -Script (Join-Path $dir 'bootstrap' 'bootstrap.ps1')
+            } finally {
+                Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+            }
             $global:Calls | Where-Object { $_ -match '^winget install' } | Should -BeNullOrEmpty
             $global:Calls | Where-Object { $_ -match '^rustup (toolchain install|component add|default)' } | Should -BeNullOrEmpty
             $global:Calls | Where-Object { $_ -match '^cargo (install|binstall --no-confirm)' } | Should -BeNullOrEmpty
@@ -190,6 +201,69 @@ Describe 'bootstrap.ps1' {
             } finally {
                 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
             }
+        }
+    }
+
+    Context 'cargo-bk version against the clone tag' {
+        BeforeAll {
+            $script:Clone = Join-Path ([IO.Path]::GetTempPath()) ('bk clone ' + [guid]::NewGuid())
+            New-Item -ItemType Directory -Path (Join-Path $script:Clone 'bootstrap'), (Join-Path $script:Clone 'crates' 'cargo-bk') -Force | Out-Null
+            Copy-Item $script:Bootstrap (Join-Path $script:Clone 'bootstrap' 'bootstrap.ps1')
+            Set-Content (Join-Path $script:Clone 'crates' 'cargo-bk' 'Cargo.toml') "[package]`nname = `"cargo-bk`"`nversion = `"0.1.0-dev`"`n"
+            $script:CloneScript = Join-Path $script:Clone 'bootstrap' 'bootstrap.ps1'
+            $g = @('-C', $script:Clone, '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false')
+            git @g init -q
+            git @g add -A
+            git @g commit -q -m one
+            git @g tag v1.2.3
+            $script:G = $g
+        }
+        AfterAll {
+            Remove-Item $script:Clone -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        It 'skips the install when the version equals the tag' {
+            Invoke-Bootstrap -Params @{ Yes = $true } -Script $script:CloneScript -BkVersion '1.2.3' | Out-Null
+            $global:Calls | Where-Object { $_ -match '^cargo install --locked --path' } | Should -BeNullOrEmpty
+        }
+        It 'installs when the version differs from the tag' {
+            Invoke-Bootstrap -Params @{ Yes = $true } -Script $script:CloneScript -BkVersion '1.0.0' | Out-Null
+            $global:Calls | Where-Object { $_ -match '^cargo install --locked --path' } | Should -Not -BeNullOrEmpty
+        }
+        It 'always installs when HEAD is not exactly at a tag' {
+            git @script:G commit -q --allow-empty -m two
+            Invoke-Bootstrap -Params @{ Yes = $true } -Script $script:CloneScript -BkVersion '1.2.3' | Out-Null
+            $global:Calls | Where-Object { $_ -match '^cargo install --locked --path' } | Should -Not -BeNullOrEmpty
+        }
+    }
+
+    Context 'doctor as the last step' {
+        BeforeAll {
+            $script:Root = Join-Path ([IO.Path]::GetTempPath()) ('bk doctor ' + [guid]::NewGuid())
+            $script:Sub = Join-Path $script:Root 'prod' 'sub'
+            New-Item -ItemType Directory -Path $script:Sub -Force | Out-Null
+            Set-Content (Join-Path $script:Root 'prod' 'Cargo.toml') "[workspace]`n[workspace.metadata.buildkit]`nversion = `"0.1.0`"`n"
+        }
+        AfterAll {
+            Remove-Item $script:Root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        It 'runs cargo bk doctor inside a product' {
+            Push-Location $script:Sub
+            try { Invoke-Bootstrap -Params @{ Yes = $true } | Out-Null } finally { Pop-Location }
+            $global:Calls | Should -Contain 'cargo bk doctor'
+        }
+        It 'runs cargo bk doctor --machine outside a product' {
+            Push-Location $script:Root
+            try { Invoke-Bootstrap -Params @{ Yes = $true } | Out-Null } finally { Pop-Location }
+            $global:Calls | Should -Contain 'cargo bk doctor --machine'
+        }
+        It 'skips doctor when cargo-bk is not installed' {
+            $out = Invoke-Bootstrap -Missing 'cargo-bk' -Params @{ Yes = $true; Without = @('cargo-tools') }
+            $global:Calls | Where-Object { $_ -match '^cargo bk doctor' } | Should -BeNullOrEmpty
+            $out | Should -Match 'doctor: skipped \(cargo-bk is not installed\)'
+        }
+        It 'does not run doctor under -DryRun' {
+            Invoke-Bootstrap -Missing 'all' -Params @{ Yes = $true; DryRun = $true } | Out-Null
+            $global:Calls | Where-Object { $_ -match '^cargo bk doctor' } | Should -BeNullOrEmpty
         }
     }
 }

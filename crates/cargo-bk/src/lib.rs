@@ -6,6 +6,7 @@ pub mod docs_rows;
 pub mod exec;
 pub mod names;
 pub mod os;
+pub mod package;
 pub mod pins;
 pub mod python;
 pub mod templates;
@@ -72,6 +73,14 @@ fn run(cli: &Cli) -> Result<()> {
         Some(Command::Upgrade { version }) => {
             let mut ws = Workspace::find(&std::env::current_dir()?)?;
             commands::upgrade::run(&mut ws, version)
+        }
+        Some(Command::Doctor { machine }) => {
+            let ws = if *machine {
+                None
+            } else {
+                Workspace::find(&std::env::current_dir()?).ok()
+            };
+            commands::doctor::run(ws.as_ref(), &exec::SystemRunner, os::Os::current())
         }
         Some(_) => bail!("not implemented yet"),
         None => bail!("no command given; see cargo bk --help"),

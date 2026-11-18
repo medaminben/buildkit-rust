@@ -278,15 +278,18 @@ cargo_tool() {
     fi
 }
 
+# Reinstall cargo-bk unless the installed version equals the clone's exact release tag. A clone
+# that is not exactly at a tag (a branch, or commits after a tag) always reinstalls.
 install_cargo_bk() {
-    local src="$script_dir/../crates/cargo-bk" want have_version
+    local src="$script_dir/../crates/cargo-bk" tag want have_version
     if [[ ! -d "$src" ]]; then
         echo "cargo-bk: skipped (not in this checkout)"
         return
     fi
-    want="$(sed -n 's/^version *= *"\(.*\)"/\1/p' "$src/Cargo.toml" 2>/dev/null | head -1)"
+    tag="$(git -C "$script_dir/.." describe --tags --exact-match --match 'v*' 2>/dev/null || true)"
+    want="${tag#v}"
     have_version="$(cargo bk --version 2>/dev/null || true)"
-    if [[ -n "$have_version" && ( -z "$want" || "$have_version" == *"$want"* ) ]]; then
+    if [[ -n "$want" && "$have_version" == "$want" ]]; then
         say "cargo-bk already installed ($have_version)"
         return
     fi
@@ -371,4 +374,28 @@ check appimagetool "$HOME/.local/bin/appimagetool" --version
 check code         code --version
 
 say "Done. Open a new shell so PATH changes (~/.cargo/bin, ~/.local/bin) apply."
-# Task 14 adds the last step here: `cargo bk doctor`.
+
+# --- doctor ---------------------------------------------------------------------------------
+# in_product: the current directory is inside a product (a Cargo.toml with
+# [workspace.metadata.buildkit] up the tree).
+in_product() {
+    local dir="$PWD"
+    while true; do
+        if [[ -f "$dir/Cargo.toml" ]] && grep -q '^\[workspace\.metadata\.buildkit\]' "$dir/Cargo.toml"; then
+            return 0
+        fi
+        [[ "$dir" == "/" ]] && return 1
+        dir="$(dirname "$dir")"
+    done
+}
+
+if $dry_run; then
+    echo "doctor: skipped (dry run)"
+elif ! cargo bk --version >/dev/null 2>&1; then
+    echo "doctor: skipped (cargo-bk is not installed)"
+else
+    say "Checking the machine"
+    doctor_args=(bk doctor)
+    in_product || doctor_args+=(--machine)
+    cargo "${doctor_args[@]}" || warn "cargo bk doctor found problems; the fix is named next to each one"
+fi

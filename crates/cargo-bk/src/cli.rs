@@ -40,7 +40,11 @@ pub enum Command {
         check: bool,
     },
     /// Check the toolchain and the product.
-    Doctor,
+    Doctor {
+        /// Check the machine only, even inside a product.
+        #[arg(long)]
+        machine: bool,
+    },
     /// Check the pinned tool versions.
     CheckPins,
     /// Move the product to this cargo-bk version.

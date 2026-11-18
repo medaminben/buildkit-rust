@@ -9,6 +9,11 @@ case "$sub" in
     [[ "${2:-}" == "--version" || "${2:-}" == "-V" ]] || exit 0
     stub_missing "cargo-$sub" && exit 127
     echo "cargo-$sub 1.0.0" ;;
+  bk)
+    if [[ "${2:-}" == "--version" ]]; then
+        stub_missing cargo-bk && exit 127
+        echo "${STUB_BK_VERSION:-1.0.0}"
+    fi ;;
   --version) echo "cargo 1.90.0" ;;
   *)
     if [[ "${2:-}" == "--version" ]]; then

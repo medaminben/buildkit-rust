@@ -2,6 +2,7 @@
 
 pub mod add;
 pub mod check_pins;
+pub mod doctor;
 pub mod manual;
 pub mod new;
 pub mod upgrade;

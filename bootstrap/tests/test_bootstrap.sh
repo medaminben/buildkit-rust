@@ -35,8 +35,8 @@ run_case() {
         printf '#!/bin/sh\n' >"$work/$name.home/.local/bin/appimagetool"
         chmod +x "$work/$name.home/.local/bin/appimagetool"
     fi
-    HOME="$work/$name.home" PATH="$stubs:$PATH" CALLS="$CALLS" STUB_MISSING="$missing" \
-        bash "$script" "$@" >"$out" 2>&1
+    (cd "${RUN_CWD:-$PWD}" && HOME="$work/$name.home" PATH="$stubs:$PATH" CALLS="$CALLS" STUB_MISSING="$missing" \
+        bash "$script" "$@" >"$out" 2>&1)
     rc=$?
     calls="$CALLS"
 }
@@ -70,9 +70,14 @@ assert_has "$out" '^\[dry-run\] .*rustup-init -y --default-toolchain stable' "dr
 assert_has "$out" '^\[dry-run\] .*cargo install' "dry-run prints a cargo install"
 assert_has "$out" '^\[dry-run\] .*curl .*-o .*appimagetool' "dry-run prints the appimagetool download"
 assert_has "$out" '^\[dry-run\] .*code --install-extension' "dry-run prints the editor extension install"
+assert_lacks "$calls" '^cargo bk doctor' "dry-run: doctor is not run"
 
-# Nothing missing: nothing is installed.
-run_case idem "" "$bootstrap" --yes --with editor
+# Nothing missing: nothing is installed. A copy without crates/ keeps the real cargo-bk
+# crate out of it.
+nocrates="$work/nocrates"
+mkdir -p "$nocrates/bootstrap"
+cp "$bootstrap" "$nocrates/bootstrap/bootstrap.sh"
+run_case idem "" "$nocrates/bootstrap/bootstrap.sh" --yes --with editor
 assert_rc 0 "idempotent run exits 0"
 assert_lacks "$calls" '^apt-get (install|update)' "idempotent: no apt-get install"
 assert_lacks "$calls" '^rustup-init' "idempotent: no rustup-init"
@@ -148,6 +153,38 @@ run_case spaced cargo-bk "$spaced/bootstrap/bootstrap.sh" --yes
 assert_rc 0 "path with a space: exits 0"
 assert_has "$calls" '^cargo install --locked --path [^ ]*dir\\ with\\ space/bootstrap/\.\./crates/cargo-bk$' \
     "path with a space: --path arrives as one argument"
+
+# cargo-bk is reinstalled unless its version equals the clone's exact tag.
+tagged="$work/tagged"
+mkdir -p "$tagged/bootstrap" "$tagged/crates/cargo-bk"
+cp "$bootstrap" "$tagged/bootstrap/bootstrap.sh"
+printf '[package]\nname = "cargo-bk"\nversion = "0.1.0-dev"\n' >"$tagged/crates/cargo-bk/Cargo.toml"
+git_t() { git -C "$tagged" -c user.name=t -c user.email=t@t -c commit.gpgsign=false "$@"; }
+git_t init -q
+git_t add -A
+git_t commit -q -m one
+git_t tag v1.2.3
+STUB_BK_VERSION=1.2.3 run_case tagsame "" "$tagged/bootstrap/bootstrap.sh" --yes
+assert_rc 0 "same tag: exits 0"
+assert_lacks "$calls" '^cargo install --locked --path' "same tag: cargo-bk is not reinstalled"
+assert_has "$out" 'cargo-bk already installed \(1\.2\.3\)' "same tag: says it is installed"
+STUB_BK_VERSION=1.0.0 run_case tagdiff "" "$tagged/bootstrap/bootstrap.sh" --yes
+assert_has "$calls" '^cargo install --locked --path' "different version: cargo-bk is installed"
+git_t commit -q --allow-empty -m two
+STUB_BK_VERSION=1.2.3 run_case notag "" "$tagged/bootstrap/bootstrap.sh" --yes
+assert_has "$calls" '^cargo install --locked --path' "not exactly at a tag: cargo-bk is always installed"
+
+# The last step is cargo bk doctor, with --machine outside a product.
+product="$work/product/sub"
+mkdir -p "$product"
+printf '[workspace]\n[workspace.metadata.buildkit]\nversion = "0.1.0"\n' >"$work/product/Cargo.toml"
+RUN_CWD="$product" run_case docin "" "$bootstrap" --yes
+assert_has "$calls" '^cargo bk doctor$' "inside a product: cargo bk doctor"
+RUN_CWD="$work" run_case docout "" "$bootstrap" --yes
+assert_has "$calls" '^cargo bk doctor --machine$' "outside a product: cargo bk doctor --machine"
+RUN_CWD="$work" run_case docnone cargo-bk "$bootstrap" --yes --without cargo-tools
+assert_lacks "$calls" '^cargo bk doctor' "no cargo-bk: doctor is not run"
+assert_has "$out" 'doctor: skipped \(cargo-bk is not installed\)' "no cargo-bk: says it skipped doctor"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]

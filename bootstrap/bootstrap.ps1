@@ -216,15 +216,14 @@ function Install-CargoBk {
         Write-Host 'cargo-bk: skipped (not in this checkout)'
         return
     }
+    # Reinstall unless the installed version equals the clone's exact release tag. A clone that
+    # is not exactly at a tag (a branch, or commits after a tag) always reinstalls.
     $want = ''
-    $manifest = Join-Path $src 'Cargo.toml'
-    if (Test-Path -LiteralPath $manifest) {
-        $line = Select-String -LiteralPath $manifest -Pattern '^version\s*=\s*"(.*)"' | Select-Object -First 1
-        if ($line) { $want = $line.Matches[0].Groups[1].Value }
-    }
+    $tag = [string](git -C (Join-Path $PSScriptRoot '..') describe --tags --exact-match --match 'v*' 2>$null | Select-Object -First 1)
+    if ($LASTEXITCODE -eq 0 -and $tag) { $want = $tag.Trim() -replace '^v', '' }
     $have = ''
-    if (Test-Tool 'cargo' @('bk', '--version')) { $have = [string](cargo bk --version 2>$null | Select-Object -First 1) }
-    if ($have -and (-not $want -or $have.Contains($want))) { Say "cargo-bk already installed ($have)"; return }
+    if (Test-Tool 'cargo' @('bk', '--version')) { $have = ([string](cargo bk --version 2>$null | Select-Object -First 1)).Trim() }
+    if ($want -and $have -eq $want) { Say "cargo-bk already installed ($have)"; return }
     Say 'Installing cargo-bk from this clone'
     Run 'cargo' @('install', '--locked', '--path', $src)
 }
@@ -292,4 +291,30 @@ foreach ($name in $checks.Keys) {
 }
 
 Say 'Done. Open a new terminal so PATH changes (~/.cargo/bin) apply.'
-# Task 14 adds the last step here: `cargo bk doctor`.
+
+# --- doctor ---------------------------------------------------------------------------------
+# Test-InProduct: the current directory is inside a product (a Cargo.toml with
+# [workspace.metadata.buildkit] up the tree).
+function Test-InProduct {
+    $dir = (Get-Location).Path
+    while ($dir) {
+        $manifest = Join-Path $dir 'Cargo.toml'
+        if ((Test-Path -LiteralPath $manifest) -and (Select-String -LiteralPath $manifest -Pattern '^\[workspace\.metadata\.buildkit\]' -Quiet)) { return $true }
+        $parent = Split-Path -Parent $dir
+        if (-not $parent -or $parent -eq $dir) { break }
+        $dir = $parent
+    }
+    return $false
+}
+
+if ($DryRun) {
+    Write-Host 'doctor: skipped (dry run)'
+} elseif (-not (Test-Tool 'cargo' @('bk', '--version'))) {
+    Write-Host 'doctor: skipped (cargo-bk is not installed)'
+} else {
+    Say 'Checking the machine'
+    $doctorArgs = @('bk', 'doctor')
+    if (-not (Test-InProduct)) { $doctorArgs += '--machine' }
+    & cargo @doctorArgs
+    if ($LASTEXITCODE -ne 0) { Warn 'cargo bk doctor found problems; the fix is named next to each one' }
+}
