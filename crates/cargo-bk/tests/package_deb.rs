@@ -81,6 +81,7 @@ fn product(root: &Path, repo: &str) -> Workspace {
         ("packaging/foo-bar.desktop", "[Desktop Entry]\n"),
         ("packaging/icon.png", "png"),
         ("LICENSE", "MIT text"),
+        ("Cargo.lock", ""),
         ("build/target/release/foo-bar-gui", "bin"),
         ("build/target/release/foo-bar-console", "bin"),
     ] {
@@ -192,6 +193,7 @@ fn modes_are_explicit() {
     }
     let r = FakeRunner::new().with_output("dpkg-deb", 0, "");
     build_deb(
+        tmp.path(),
         &stage,
         &tmp.path().join("build/dist"),
         &ws.package_meta().unwrap(),
@@ -264,4 +266,27 @@ fn real_deb_of_a_generated_product() {
         .output()
         .unwrap();
     println!("{}", String::from_utf8_lossy(&info.stdout));
+}
+
+#[test]
+fn missing_lockfile_fails_before_building() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = product(tmp.path(), "acme/foo");
+    fs::remove_file(tmp.path().join("Cargo.lock")).unwrap();
+    let r = FakeRunner::new();
+    let e = package::run(
+        &ws,
+        Some("deb"),
+        Os::Linux,
+        &r,
+        &NoGit,
+        &mut Vec::new(),
+        &mut Vec::new(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        e.to_string(),
+        "Cargo.lock is missing; run cargo generate-lockfile and commit it (packages build with --locked)"
+    );
+    assert_eq!(r.calls().len(), 0);
 }

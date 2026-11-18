@@ -95,3 +95,16 @@ fn backslash_escapes_opening_braces() {
         "{{kebab}} x"
     );
 }
+
+#[test]
+fn product_lint_templates_match_repo_lint_files() {
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for name in ["rustfmt", "clippy", "deny"] {
+        let tmpl =
+            std::fs::read_to_string(repo.join(format!("templates/project/{name}.toml.tmpl")))
+                .unwrap();
+        let (_, body) = tmpl.split_once('\n').unwrap();
+        let lint = std::fs::read_to_string(repo.join(format!("lint/{name}.toml"))).unwrap();
+        assert_eq!(body, lint, "{name}.toml.tmpl differs from lint/{name}.toml");
+    }
+}

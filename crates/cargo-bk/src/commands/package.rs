@@ -26,6 +26,11 @@ pub fn run(
     err: &mut dyn Write,
 ) -> Result<Vec<PathBuf>> {
     let formats = formats_for(requested, os)?;
+    if !ws.root.join("Cargo.lock").is_file() {
+        bail!(
+            "Cargo.lock is missing; run cargo generate-lockfile and commit it (packages build with --locked)"
+        );
+    }
     let meta = ws.package_meta()?;
     let kebab = ProductName::parse(&meta.display_name)?.kebab;
     let fallback = ws
@@ -72,6 +77,7 @@ pub fn run(
     for format in formats {
         let path = match format {
             Format::Deb => deb::build_deb(
+                &ws.root,
                 &stage,
                 &dist,
                 &meta,

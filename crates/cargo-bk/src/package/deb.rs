@@ -37,13 +37,14 @@ pub fn deb_control(
     lines.join("\n") + "\n"
 }
 
-/// Builds `<out>/<kebab>_<version>_amd64.deb` from the stage at
-/// `<root>/build/stage`; `meta.desktop` and `meta.icon` are read relative to
-/// that `<root>`. The package tree is assembled in `<root>/build/deb-root`.
+/// Builds `<out>/<kebab>_<version>_amd64.deb` from `stage`; `meta.desktop`
+/// and `meta.icon` are read relative to the workspace `root`. The package tree is assembled in `<root>/build/deb-root`.
 ///
 /// # Errors
 /// When a file is missing, a file operation fails, or `dpkg-deb` fails.
+#[allow(clippy::too_many_arguments)]
 pub fn build_deb(
+    root: &Path,
     stage: &Path,
     out: &Path,
     meta: &PackageMeta,
@@ -52,10 +53,6 @@ pub fn build_deb(
     version: &str,
     r: &dyn Runner,
 ) -> Result<PathBuf> {
-    let root = stage
-        .parent()
-        .and_then(Path::parent)
-        .context("the stage must be <root>/build/stage")?;
     let pkg = root.join("build").join("deb-root");
     if pkg.exists() {
         fs::remove_dir_all(&pkg).with_context(|| format!("cannot clear {}", pkg.display()))?;
