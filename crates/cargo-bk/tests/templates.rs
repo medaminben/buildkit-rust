@@ -72,3 +72,26 @@ fn write_tree_error_names_template_path() {
     let msg = format!("{err:#}");
     assert!(msg.contains("nope") && msg.contains("bad.tmpl"), "{msg}");
 }
+
+#[test]
+fn write_tree_writes_nothing_when_a_later_file_fails() {
+    static PARTIAL: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/tests/fixtures/partial");
+    let dir = tempfile::tempdir().unwrap();
+    assert!(write_tree(&PARTIAL, dir.path(), &vars()).is_err());
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn github_actions_expressions_render_unchanged() {
+    let src = "${{ github.sha }} ${{ matrix.os }} ${{ secrets.TOKEN }}";
+    assert_eq!(render(src, &vars()).unwrap(), src);
+}
+
+#[test]
+fn backslash_escapes_opening_braces() {
+    assert_eq!(render("$\\{{github}}", &vars()).unwrap(), "${{github}}");
+    assert_eq!(
+        render("\\{{kebab}} {{kebab}}", &vars()).unwrap(),
+        "{{kebab}} x"
+    );
+}
