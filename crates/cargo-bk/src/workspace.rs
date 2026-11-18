@@ -108,6 +108,17 @@ impl Workspace {
         })
     }
 
+    /// `[workspace.metadata.buildkit] repo` as `owner/repo`; empty when unset.
+    #[must_use]
+    pub fn repo(&self) -> String {
+        self.metadata()
+            .and_then(|m| m.get("buildkit"))
+            .and_then(|b| b.get("repo"))
+            .and_then(Item::as_str)
+            .unwrap_or_default()
+            .to_string()
+    }
+
     /// Writes the manifest back, keeping its formatting.
     ///
     /// # Errors

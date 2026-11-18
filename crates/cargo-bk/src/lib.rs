@@ -63,6 +63,19 @@ fn run(cli: &Cli) -> Result<()> {
             commands::add::add_app(&ws, &args.name, args.kind())?;
             Ok(())
         }
+        Some(Command::Package { format }) => {
+            let ws = commands::open_workspace(&std::env::current_dir()?)?;
+            commands::package::run(
+                &ws,
+                format.as_deref(),
+                os::Os::current(),
+                &exec::SystemRunner,
+                &buildkit::SystemGit,
+                &mut std::io::stdout(),
+                &mut std::io::stderr(),
+            )?;
+            Ok(())
+        }
         Some(Command::Manual { check }) => {
             let ws = Workspace::find(&std::env::current_dir()?)?;
             commands::manual::run(&ws, &exec::SystemRunner, os::Os::current(), *check)

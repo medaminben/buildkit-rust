@@ -102,7 +102,7 @@ fn pin_mismatch_warns_and_carries_on() {
 fn unimplemented_command_bails() {
     let t = tempfile::tempdir().unwrap();
     cargo_bk(t.path())
-        .arg("package")
+        .arg("repo-setup")
         .assert()
         .code(1)
         .stderr(predicate::str::contains("not implemented yet"));

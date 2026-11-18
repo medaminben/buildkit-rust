@@ -6,6 +6,7 @@ pub mod doctor;
 pub mod link;
 pub mod manual;
 pub mod new;
+pub mod package;
 pub mod upgrade;
 pub mod version;
 

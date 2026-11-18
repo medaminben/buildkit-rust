@@ -32,7 +32,11 @@ pub enum Command {
     /// Print the product version.
     Version,
     /// Build the installer package.
-    Package,
+    Package {
+        /// Format to build: inno, appimage, deb or all (default: all of this OS).
+        #[arg(long, value_name = "inno|appimage|deb|all")]
+        format: Option<String>,
+    },
     /// Build the manual.
     Manual {
         /// Check links and content; write nothing.
