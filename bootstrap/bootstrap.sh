@@ -33,6 +33,8 @@ EDITOR_EXTENSIONS=(rust-lang.rust-analyzer vadimcn.vscode-lldb tamasfe.even-bett
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+usage() { sed -n '2,/^$/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"; }
+
 case "$(uname -s)" in
     MINGW* | MSYS* | CYGWIN*)
         # -File passes arguments as literal strings, so translate each flag to the parameter
@@ -56,7 +58,7 @@ case "$(uname -s)" in
                     shift
                     ;;
                 -h | --help)
-                    sed -n '2,/^$/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
+                    usage
                     exit 0
                     ;;
                 *) echo "Unknown option: $1" >&2; exit 2 ;;
@@ -106,8 +108,6 @@ assume_yes=false
 minimal=false
 declare -A without=()
 declare -A with=()
-
-usage() { sed -n '2,/^$/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"; }
 
 is_group() { local g; for g in "${ALL_GROUPS[@]}"; do [[ "$g" == "$1" ]] && return 0; done; return 1; }
 
@@ -216,6 +216,8 @@ fi
 
 # --- Rust -----------------------------------------------------------------------------------
 RUST_COMPONENTS=(rustfmt clippy llvm-tools-preview)
+component_args=()
+for c in "${RUST_COMPONENTS[@]}"; do component_args+=(-c "$c"); done
 
 install_rust() {
     local triple="x86_64-unknown-linux-gnu"
@@ -223,13 +225,13 @@ install_rust() {
     say "Installing rustup and Rust stable into ~/.cargo"
     download "$RUSTUP_DIST/$triple/rustup-init" "$tmp/rustup-init"
     run chmod +x "$tmp/rustup-init"
-    run "$tmp/rustup-init" -y --default-toolchain stable --profile minimal -c rustfmt -c clippy -c llvm-tools-preview
+    run "$tmp/rustup-init" -y --default-toolchain stable --profile minimal "${component_args[@]}"
 }
 
 ensure_rust_components() {
     if ! rustup toolchain list 2>/dev/null | grep -q '^stable'; then
         say "Installing the stable toolchain"
-        run rustup toolchain install stable --profile minimal -c rustfmt -c clippy -c llvm-tools-preview
+        run rustup toolchain install stable --profile minimal "${component_args[@]}"
         run rustup default stable
         return
     fi
