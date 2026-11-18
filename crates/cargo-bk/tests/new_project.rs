@@ -384,6 +384,7 @@ fn first_release_sets_the_key_and_the_fallback_version() {
     let t = tempfile::tempdir().unwrap();
     let mut a = args(Some("Foo"), &[]);
     a.first_release = Some("v2.0.0".into());
+    a.fixed_bk_version = Some("0.2.0".into());
     new_project(t.path(), &a, &FakeRunner::new()).unwrap();
     let text = fs::read_to_string(t.path().join("Cargo.toml")).unwrap();
     let doc: toml_edit::DocumentMut = text.parse().unwrap();
@@ -421,10 +422,53 @@ fn malformed_first_release_is_refused_before_writing() {
         std::fs::create_dir(&dir).unwrap();
         let mut a = args(Some("Foo"), &[]);
         a.first_release = Some(bad.into());
+        a.fixed_bk_version = Some("0.2.0".into());
         let e = new_project(&dir, &a, &FakeRunner::new())
             .unwrap_err()
             .to_string();
         assert!(e.contains(bad) && e.contains("X.Y.Z"), "{bad}: {e}");
         assert!(!dir.join("Cargo.toml").exists());
     }
+}
+
+#[test]
+fn first_release_needs_buildkit_0_2_0() {
+    let t = tempfile::tempdir().unwrap();
+    let dir = t.path().join("foo");
+    std::fs::create_dir(&dir).unwrap();
+    let mut a = args(Some("Foo"), &[]);
+    a.first_release = Some("2.0.0".into());
+    a.fixed_bk_version = Some("0.1.0".into());
+    let e = new_project(&dir, &a, &FakeRunner::new())
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("0.2.0") && e.contains("v0.1.0"), "{e}");
+    assert!(!dir.join("Cargo.toml").exists());
+    a.fixed_bk_version = Some("0.2.0".into());
+    new_project(&dir, &a, &FakeRunner::new()).unwrap();
+    assert!(dir.join("Cargo.toml").exists());
+}
+
+#[test]
+fn first_release_rerun_same_value_is_a_noop_and_other_value_is_refused() {
+    let t = tempfile::tempdir().unwrap();
+    let mut a = args(Some("Foo"), &[]);
+    a.first_release = Some("2.0.0".into());
+    a.fixed_bk_version = Some("0.2.0".into());
+    new_project(t.path(), &a, &FakeRunner::new()).unwrap();
+    let before = fs::read_to_string(t.path().join("Cargo.toml")).unwrap();
+    new_project(t.path(), &a, &FakeRunner::new()).unwrap();
+    assert_eq!(
+        before,
+        fs::read_to_string(t.path().join("Cargo.toml")).unwrap()
+    );
+    a.first_release = Some("3.0.0".into());
+    let e = new_project(t.path(), &a, &FakeRunner::new())
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("3.0.0") && e.contains("2.0.0"), "{e}");
+    assert_eq!(
+        before,
+        fs::read_to_string(t.path().join("Cargo.toml")).unwrap()
+    );
 }

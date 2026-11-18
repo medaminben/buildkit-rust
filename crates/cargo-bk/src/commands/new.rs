@@ -102,11 +102,55 @@ fn first_release(args: &NewArgs) -> Result<Option<String>> {
     Ok(Some(version.to_string()))
 }
 
+/// Whether `version` (`X.Y.Z`, possibly with a `-N-gSHA` suffix) is at least `0.2.0`,
+/// the first buildkit-rust release whose `release.yml` reads `first-release`.
+fn reads_first_release(version: &str) -> bool {
+    let mut parts = version
+        .split(['.', '-'])
+        .map(|p| p.parse::<u64>().unwrap_or(0));
+    let (major, minor) = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
+    (major, minor) >= (0, 2)
+}
+
+/// Refuses `--first-release` when the product would pin a buildkit-rust that ignores the key.
+fn check_first_release_support(bk_version: &str) -> Result<()> {
+    if !reads_first_release(bk_version) {
+        bail!(
+            "--first-release needs buildkit-rust 0.2.0 or later; this cargo-bk pins v{bk_version}. \
+             Install cargo-bk from tag v0.2.0."
+        );
+    }
+    Ok(())
+}
+
+/// Refuses a `first-release` that differs from the key already in `dir/Cargo.toml`.
+fn check_first_release_unchanged(dir: &Path, version: &str) -> Result<()> {
+    let path = dir.join("Cargo.toml");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let doc: toml_edit::DocumentMut = text
+        .parse()
+        .with_context(|| format!("parsing {}", path.display()))?;
+    if let Some(old) = doc["workspace"]["metadata"]["buildkit"]["first-release"].as_str()
+        && old != version
+    {
+        bail!(
+            "--first-release {version}: {} already has first-release = \"{old}\"; edit it by hand",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
 /// Sets the fallback version and the `first-release` key in the generated root `Cargo.toml`.
 fn write_first_release(dir: &Path, version: &str) -> Result<()> {
     let path = dir.join("Cargo.toml");
-    let text = std::fs::read_to_string(&path)?;
-    let mut doc: toml_edit::DocumentMut = text.parse()?;
+    let text =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .with_context(|| format!("parsing {}", path.display()))?;
     doc["workspace"]["package"]["version"] = toml_edit::value(version);
     let table = doc["workspace"]["metadata"]["buildkit"]
         .as_table_mut()
@@ -123,7 +167,8 @@ fn write_first_release(dir: &Path, version: &str) -> Result<()> {
     for (key, item) in moved {
         table.insert_formatted(&key, item);
     }
-    std::fs::write(&path, doc.to_string())?;
+    std::fs::write(&path, doc.to_string())
+        .with_context(|| format!("writing {}", path.display()))?;
     Ok(())
 }
 
@@ -269,7 +314,11 @@ pub fn new_project(dir: &Path, args: &NewArgs, runner: &dyn Runner) -> Result<Wr
     check_target(dir)?;
     let product = product_name(dir, args)?;
     let crates = crate_names(args)?;
-    let first_release = first_release(args)?;
+    let first_release_version = first_release(args)?;
+    if let Some(version) = &first_release_version {
+        check_first_release_support(args.fixed_bk_version.as_deref().unwrap_or(OWN_VERSION))?;
+        check_first_release_unchanged(dir, version)?;
+    }
     let rust = rust_version()?;
     let tree = |name: &str| {
         TEMPLATES
@@ -312,7 +361,7 @@ pub fn new_project(dir: &Path, args: &NewArgs, runner: &dyn Runner) -> Result<Wr
         );
     }
 
-    if let Some(version) = &first_release {
+    if let Some(version) = &first_release_version {
         write_first_release(dir, version)?;
     }
     layout_rows(dir, &product, &crates, &gui_app, &console_app)?;
