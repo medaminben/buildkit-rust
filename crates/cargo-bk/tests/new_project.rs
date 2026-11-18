@@ -1,7 +1,9 @@
 mod common;
 
+use cargo_bk::commands::link::rewrite_dep;
 use cargo_bk::commands::new::{Flow, NewArgs, new_project};
 use cargo_bk::exec::{FakeRunner, SystemRunner};
+use cargo_bk::workspace::Workspace;
 use common::new_args as args;
 use std::fs;
 use std::path::Path;
@@ -278,18 +280,15 @@ fn generated_product_builds_and_reports_its_version() {
     let dir = tmp.path().join("My Projékt dir").join("foo");
     new_project(&dir, &args(None, &["core", "physics"]), &SystemRunner).unwrap();
 
-    let bk = Path::new(env!("CARGO_MANIFEST_DIR")).join("../buildkit");
-    let bk = fs::canonicalize(bk).unwrap();
     // The github repository is not reachable from every machine, so point the
     // dependency at the local checkout instead of patching the git source.
-    let manifest = dir.join("Cargo.toml");
-    let text = fs::read_to_string(&manifest).unwrap();
-    let git_dep = text
-        .lines()
-        .find(|l| l.starts_with("buildkit = { git"))
-        .unwrap();
-    let local = format!("buildkit = {{ path = \"{}\" }}", bk.display());
-    fs::write(&manifest, text.replace(git_dep, &local)).unwrap();
+    let mut ws = Workspace::find(&dir).unwrap();
+    rewrite_dep(
+        &mut ws,
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
+    )
+    .unwrap();
+    ws.save().unwrap();
     let cargo = |extra: &[&str]| {
         let out = Command::new("cargo")
             .args(extra)

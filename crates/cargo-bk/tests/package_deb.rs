@@ -1,17 +1,22 @@
 mod common;
 
 use buildkit::Git;
+#[cfg(target_os = "linux")]
 use cargo_bk::commands::link::rewrite_dep;
+#[cfg(target_os = "linux")]
 use cargo_bk::commands::new::new_project;
 use cargo_bk::commands::package;
-use cargo_bk::exec::{FakeRunner, SystemRunner};
+use cargo_bk::exec::FakeRunner;
+#[cfg(target_os = "linux")]
+use cargo_bk::exec::SystemRunner;
 use cargo_bk::os::Os;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use cargo_bk::package::PackageCtx;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use cargo_bk::package::deb::build_deb;
 use cargo_bk::package::deb::{deb_control, deb_version};
 use cargo_bk::workspace::{PackageMeta, Workspace};
+#[cfg(target_os = "linux")]
 use common::new_args;
 use std::fs;
 use std::path::Path;
@@ -97,6 +102,7 @@ fn product(root: &Path, repo: &str) -> Workspace {
     }
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn untagged_repo_warns_about_dev_version() {
     let tmp = tempfile::tempdir().unwrap();
@@ -146,6 +152,7 @@ fn untagged_repo_warns_about_dev_version() {
     );
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn maintainer_falls_back_to_kebab_and_dpkg_failure_is_an_error() {
     let tmp = tempfile::tempdir().unwrap();
@@ -182,7 +189,7 @@ fn maintainer_falls_back_to_kebab_and_dpkg_failure_is_an_error() {
     assert!(e.to_string().contains("boom"));
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 #[test]
 fn modes_are_explicit() {
     use std::os::unix::fs::PermissionsExt;
@@ -223,6 +230,7 @@ fn modes_are_explicit() {
     assert_eq!(mode("usr/share"), 0o755);
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 #[ignore = "builds a generated product with eframe; takes minutes"]
 fn real_deb_of_a_generated_product() {
@@ -293,7 +301,7 @@ fn missing_lockfile_fails_before_building() {
     assert_eq!(r.calls().len(), 0);
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 #[test]
 fn deb_and_appimage_ship_the_whole_stage() {
     let tmp = tempfile::tempdir().unwrap();
