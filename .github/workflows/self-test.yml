@@ -114,7 +114,7 @@ jobs:
           cargo run -q -p cargo-bk -- manual --check
           cargo deny --config lint/deny.toml check
       - name: cargo test, including the ignored real-build tests
-        run: cargo test --workspace --locked -- --include-ignored
+        run: cargo test --workspace --locked --no-fail-fast -- --include-ignored
         env:
           # The tests that build a generated product read the git identity.
           GIT_AUTHOR_NAME: CI Bot
