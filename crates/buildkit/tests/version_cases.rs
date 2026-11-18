@@ -1,4 +1,4 @@
-use buildkit::{Git, SystemGit, Version, resolve};
+use buildkit::{Git, SystemGit, SystemGitWith, Version, resolve};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -15,22 +15,12 @@ fn empty_config() -> &'static Path {
     })
 }
 
-/// Git with global and system config disabled, set per command (no process env).
-struct IsolatedGit;
-
-impl Git for IsolatedGit {
-    fn run(&self, dir: &Path, args: &[&str]) -> Option<String> {
-        let out = Command::new("git")
-            .env("GIT_CONFIG_GLOBAL", empty_config())
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .args(["-c", "log.showSignature=false", "-C"])
-            .arg(dir)
-            .args(args)
-            .output()
-            .ok()?;
-        out.status
-            .success()
-            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+fn isolated() -> SystemGitWith {
+    SystemGitWith {
+        env: vec![(
+            "GIT_CONFIG_GLOBAL".to_string(),
+            empty_config().to_string_lossy().into_owned(),
+        )],
     }
 }
 
@@ -80,7 +70,7 @@ fn tag(d: &Path, t: &str) {
 }
 
 fn get(d: &Path, fallback: &str) -> Version {
-    resolve(d, fallback, &IsolatedGit)
+    resolve(d, fallback, &isolated())
 }
 
 fn check(d: &Path, fallback: &str, numeric: &str, full: &str) {

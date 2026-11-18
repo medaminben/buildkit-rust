@@ -6,7 +6,7 @@ mod tags;
 
 use std::path::{Path, PathBuf};
 
-pub use git::{Git, SystemGit};
+pub use git::{Git, SystemGit, SystemGitWith};
 pub use tags::select_tag;
 
 /// The version used when git gives no tag, e.g. `Fallback("0.1.0")`.
@@ -48,6 +48,7 @@ fn from_tag(source_dir: &Path, git: &dyn Git) -> Option<Version> {
             "log",
             "--simplify-by-decoration",
             "--decorate=full",
+            "--no-color",
             "--format=%D",
             "HEAD",
         ],
