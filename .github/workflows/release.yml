@@ -96,8 +96,9 @@ jobs:
           BUILDKIT_REF: ${{ inputs.buildkit-ref }}
         run: |
           set -euo pipefail
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import os, tomllib
+          python -I - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, sys, tomllib
+          sys.stdout.reconfigure(newline="\n")
           with open("Cargo.toml", "rb") as f:
               ws = tomllib.load(f)["workspace"]["metadata"]
           print("ref=" + (os.environ["BUILDKIT_REF"] or "v" + ws["buildkit"]["version"]))

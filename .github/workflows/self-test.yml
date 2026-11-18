@@ -90,9 +90,16 @@ jobs:
       - name: Install the toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> build/target"
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about,cargo-deny
+      - name: Format and clippy
+        run: |
+          set -euo pipefail
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Python unit tests
         run: |
           set -euo pipefail
@@ -222,6 +229,8 @@ jobs:
       - name: Install the toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> build/target"
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about
