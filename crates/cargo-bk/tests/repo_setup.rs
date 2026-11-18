@@ -188,3 +188,82 @@ fn gh_failure_is_an_error() {
     let err = run(&ws, &r, true, None, &mut Vec::new()).unwrap_err();
     assert!(format!("{err:#}").contains("not logged in"));
 }
+
+fn beta_runner(beta_present: bool) -> FakeRunner {
+    let r = FakeRunner::new()
+        .with_output("gh", 0, "o/r\n")
+        // First match wins: the probe pattern below also matches the protection URL.
+        .with_output_for("gh", "Beta/protection", 0, "")
+        .with_output_for("gh", "git/ref/heads/main", 0, "deadbeef\n");
+    if beta_present {
+        r.with_output_for("gh", "branches/Beta", 0, "{}")
+    } else {
+        r.with_failure_for("gh", "branches/Beta", 1, "gh: Not Found (HTTP 404)")
+    }
+}
+
+fn pos(calls: &[Cmd], needle: &str) -> usize {
+    calls
+        .iter()
+        .position(|c| joined(c).contains(needle))
+        .unwrap()
+}
+
+#[test]
+fn beta_present_run_has_no_ref_and_protects_both() {
+    let (_t, ws) = product(Some("beta"));
+    let r = beta_runner(true);
+    run(&ws, &r, false, None, &mut Vec::new()).unwrap();
+    let calls = r.calls();
+    assert!(!calls.iter().any(|c| joined(c).contains("git/refs")));
+    assert!(
+        !calls
+            .iter()
+            .any(|c| joined(c).contains("git/ref/heads/main"))
+    );
+    assert!(
+        calls
+            .iter()
+            .any(|c| joined(c).contains("branches/main/protection"))
+    );
+    assert!(
+        calls
+            .iter()
+            .any(|c| joined(c).contains("branches/Beta/protection"))
+    );
+}
+
+#[test]
+fn beta_missing_run_creates_ref_with_main_sha_before_protection() {
+    let (_t, ws) = product(Some("beta"));
+    let r = beta_runner(false);
+    run(&ws, &r, false, None, &mut Vec::new()).unwrap();
+    let calls = r.calls();
+    let ref_at = pos(&calls, "repos/o/r/git/refs");
+    assert!(joined(&calls[ref_at]).contains("sha=deadbeef"));
+    assert!(ref_at < pos(&calls, "branches/Beta/protection"));
+}
+
+#[test]
+fn beta_missing_dry_run_only_reads() {
+    let (_t, ws) = product(Some("beta"));
+    let r = beta_runner(false);
+    let mut out = Vec::new();
+    run(&ws, &r, true, None, &mut out).unwrap();
+    let calls = r.calls();
+    assert_eq!(calls.len(), 3, "repo view, Beta probe, main sha");
+    assert!(!calls.iter().any(|c| is_label(c) || is_protection(c)));
+    assert!(!calls.iter().any(|c| joined(c).contains("git/refs")));
+    let text = String::from_utf8(out).unwrap();
+    assert!(text.contains("sha=deadbeef"));
+    assert!(text.contains("branches/Beta/protection"));
+}
+
+#[test]
+fn beta_probe_other_failure_is_an_error() {
+    let (_t, ws) = product(Some("beta"));
+    let r = FakeRunner::new()
+        .with_output("gh", 0, "o/r\n")
+        .with_failure_for("gh", "branches/Beta", 1, "HTTP 401 bad credentials");
+    assert!(run(&ws, &r, true, None, &mut Vec::new()).is_err());
+}

@@ -82,6 +82,7 @@ mod fake {
     #[derive(Default)]
     pub struct FakeRunner {
         responses: RefCell<HashMap<String, Output>>,
+        scoped: RefCell<Vec<(String, String, Output)>>,
         on_path: RefCell<HashMap<String, PathBuf>>,
         calls: RefCell<Vec<Cmd>>,
     }
@@ -120,6 +121,49 @@ mod fake {
             self
         }
 
+        /// Like `with_output`, but only for runs of `program` with an argument
+        /// containing `arg_part`; checked before the program-only responses.
+        #[must_use]
+        pub fn with_output_for(
+            self,
+            program: &str,
+            arg_part: &str,
+            status: i32,
+            stdout: &str,
+        ) -> Self {
+            self.scoped.borrow_mut().push((
+                program.to_string(),
+                arg_part.to_string(),
+                Output {
+                    status,
+                    stdout: stdout.to_string(),
+                    stderr: String::new(),
+                },
+            ));
+            self
+        }
+
+        /// Like `with_failure`, but scoped by an argument substring.
+        #[must_use]
+        pub fn with_failure_for(
+            self,
+            program: &str,
+            arg_part: &str,
+            status: i32,
+            stderr: &str,
+        ) -> Self {
+            self.scoped.borrow_mut().push((
+                program.to_string(),
+                arg_part.to_string(),
+                Output {
+                    status,
+                    stdout: String::new(),
+                    stderr: stderr.to_string(),
+                },
+            ));
+            self
+        }
+
         /// Makes `which(program)` return `path`.
         #[must_use]
         pub fn with_tool(self, program: &str, path: &str) -> Self {
@@ -139,6 +183,17 @@ mod fake {
     impl Runner for FakeRunner {
         fn run(&self, cmd: &Cmd) -> Result<Output> {
             self.calls.borrow_mut().push(cmd.clone());
+            let hit = self
+                .scoped
+                .borrow()
+                .iter()
+                .find(|(p, part, _)| {
+                    *p == cmd.program && cmd.args.iter().any(|a| a.contains(part.as_str()))
+                })
+                .map(|(_, _, o)| o.clone());
+            if let Some(o) = hit {
+                return Ok(o);
+            }
             match self.responses.borrow().get(&cmd.program) {
                 Some(o) => Ok(o.clone()),
                 None => bail!("cannot run `{}`: not scripted", cmd.program),

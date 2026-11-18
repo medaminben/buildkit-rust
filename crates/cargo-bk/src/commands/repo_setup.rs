@@ -153,12 +153,13 @@ pub fn run(
             ".nameWithOwner",
         ],
     )?;
+    // Direct flow has no Beta branch: `true` plans no ref command, so the sha stays unused.
     let (mut has_beta, mut sha) = (true, String::new());
     if flow == Flow::Beta {
         let beta = read(runner, &["api", &format!("repos/{repo}/branches/Beta")])?;
         has_beta = match beta.status {
             0 => true,
-            _ if beta.stderr.contains("404") || beta.stderr.contains("Not Found") => false,
+            _ if beta.stderr.contains("HTTP 404") || beta.stderr.contains("Not Found") => false,
             _ => bail!("cannot read the Beta branch: {}", beta.stderr.trim()),
         };
         if !has_beta {
