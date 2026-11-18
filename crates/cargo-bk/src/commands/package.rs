@@ -4,7 +4,7 @@ use crate::exec::{Cmd, Runner};
 use crate::names::ProductName;
 use crate::os::Os;
 use crate::package::stage::{apply_stage, plan_stage};
-use crate::package::{Format, PackageCtx, appimage, deb, formats_for, notices};
+use crate::package::{Format, PackageCtx, appimage, deb, formats_for, inno, notices};
 use crate::workspace::Workspace;
 use anyhow::{Result, bail};
 use buildkit::Git;
@@ -84,13 +84,15 @@ pub fn run(
     };
     let mut built = Vec::new();
     for format in formats {
-        let path = match format {
-            Format::Deb => deb::build_deb(&ctx, r)?,
-            Format::AppImage => appimage::build_appimage(&ctx, r)?,
-            Format::Inno => bail!("not implemented yet"),
+        let paths = match format {
+            Format::Deb => vec![deb::build_deb(&ctx, r)?],
+            Format::AppImage => vec![appimage::build_appimage(&ctx, r)?],
+            Format::Inno => inno::build_inno(&ctx, r, &|k| std::env::var(k).ok())?,
         };
-        writeln!(out, "{}", path.display())?;
-        built.push(path);
+        for path in paths {
+            writeln!(out, "{}", path.display())?;
+            built.push(path);
+        }
     }
     Ok(built)
 }
