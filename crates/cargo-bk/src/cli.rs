@@ -53,9 +53,19 @@ pub enum Command {
         version: String,
     },
     /// Link the product to a local buildkit-rust.
-    Link,
+    Link {
+        /// The checkout; default `../buildkit-rust`.
+        path: Option<std::path::PathBuf>,
+        /// Rewrite the root Cargo.toml dependency instead of patching the parent cargo config.
+        #[arg(long)]
+        rewrite_dep: bool,
+    },
     /// Undo `link`.
-    Unlink,
+    Unlink {
+        /// Restore the git dependency in the root Cargo.toml.
+        #[arg(long)]
+        rewrite_dep: bool,
+    },
     /// Set up the repository.
     RepoSetup,
 }

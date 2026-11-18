@@ -139,8 +139,10 @@ fn link_active(ws: &Workspace) -> bool {
     let Some(parent) = ws.root.parent() else {
         return false;
     };
-    std::fs::read_to_string(parent.join(".cargo/config.toml"))
-        .is_ok_and(|t| t.lines().any(|l| l.trim() == "# >>> cargo bk link"))
+    std::fs::read_to_string(parent.join(".cargo/config.toml")).is_ok_and(|t| {
+        t.lines()
+            .any(|l| l.trim().starts_with("# >>> cargo bk link"))
+    })
 }
 
 /// Runs every check. `ws` is the product, or `None` for a machine-only check.

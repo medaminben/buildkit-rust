@@ -86,6 +86,14 @@ fn run(cli: &Cli) -> Result<()> {
             };
             commands::doctor::run(ws.as_ref(), &exec::SystemRunner, os::Os::current())
         }
+        Some(Command::Link { path, rewrite_dep }) => commands::link::run_link(
+            Workspace::find(&std::env::current_dir()?)?,
+            path.as_deref(),
+            *rewrite_dep,
+        ),
+        Some(Command::Unlink { rewrite_dep }) => {
+            commands::link::run_unlink(Workspace::find(&std::env::current_dir()?)?, *rewrite_dep)
+        }
         Some(_) => bail!("not implemented yet"),
         None => bail!("no command given; see cargo bk --help"),
     }
