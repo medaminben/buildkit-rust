@@ -52,13 +52,11 @@ fn run(cli: &Cli) -> Result<()> {
         Some(Command::AddCrate { name }) => {
             let ws = commands::open_workspace(&std::env::current_dir()?)?;
             commands::add::add_crate(&ws, name)?;
-            println!("added crates/{name}");
             Ok(())
         }
         Some(Command::AddApp(args)) => {
             let ws = commands::open_workspace(&std::env::current_dir()?)?;
             commands::add::add_app(&ws, &args.name, args.kind())?;
-            println!("added app {}", args.name);
             Ok(())
         }
         Some(_) => bail!("not implemented yet"),

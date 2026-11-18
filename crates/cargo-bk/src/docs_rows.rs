@@ -53,15 +53,20 @@ pub fn ensure_row(markdown: &str, table_marker: &str, row: &str) -> Option<Strin
     if lines[first..end].iter().any(|l| key(l) == key(row)) {
         return None;
     }
-    let offset: usize = lines[..end].iter().map(|l| l.len() + 1).sum();
-    let offset = offset.min(markdown.len());
+    let segments: Vec<&str> = markdown.split_inclusive('\n').collect();
+    let offset: usize = segments[..end].iter().map(|l| l.len()).sum();
+    let crlf = segments[..end]
+        .iter()
+        .rfind(|l| l.ends_with('\n'))
+        .is_some_and(|l| l.ends_with("\r\n"));
+    let eol = if crlf { "\r\n" } else { "\n" };
     let mut out = String::with_capacity(markdown.len() + row.len() + 2);
     out.push_str(&markdown[..offset]);
     if !out.ends_with('\n') {
-        out.push('\n');
+        out.push_str(eol);
     }
     out.push_str(row);
-    out.push('\n');
+    out.push_str(eol);
     out.push_str(&markdown[offset..]);
     Some(out)
 }

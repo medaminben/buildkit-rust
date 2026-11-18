@@ -211,3 +211,16 @@ fn the_generated_manual_passes_the_manual_check() {
     );
     assert!(text.is_empty(), "{text}");
 }
+
+#[test]
+fn ensure_row_keeps_a_crlf_file_intact() {
+    let before = format!("# T\r\n\r\n{MARKER}\r\n| A | B |\r\n| --- | --- |\r\n| x | y |\r\n");
+    let after = "\r\nAfter.\r\n";
+    let out = ensure_row(&format!("{before}{after}"), MARKER, "| z | w |").unwrap();
+    assert_eq!(out, format!("{before}| z | w |\r\n{after}"));
+    let end = format!("{MARKER}\r\n| A |\r\n| x |");
+    assert_eq!(
+        ensure_row(&end, MARKER, "| z |").unwrap(),
+        format!("{MARKER}\r\n| A |\r\n| x |\r\n| z |\r\n")
+    );
+}

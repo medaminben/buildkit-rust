@@ -121,6 +121,7 @@ pub fn add_crate(ws: &Workspace, name: &str) -> Result<WriteReport> {
         &vars(&ctx.product, &krate, &ctx.repo, ctx.flow, &ctx.rust),
     )?;
     print_notes(&add_layout_row(&ws.root, &crate_row(&ctx.product, &krate))?);
+    println!("added crate {}", krate.package(&ctx.product));
     Ok(report)
 }
 
@@ -150,5 +151,6 @@ pub fn add_app(ws: &Workspace, name: &str, kind: AppKind) -> Result<WriteReport>
     let mut report = WriteReport::default();
     merge(&mut report, write_tree(tree, &ws.root, &v)?);
     print_notes(&add_layout_row(&ws.root, &app_row(&app, purpose))?);
+    println!("added app {app}");
     Ok(report)
 }
