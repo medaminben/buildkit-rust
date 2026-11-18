@@ -1,6 +1,9 @@
 # Build output
 build/
 
+# npm (setup runs npm ci)
+node_modules/
+
 # OS
 .DS_Store
 Thumbs.db

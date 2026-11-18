@@ -89,7 +89,7 @@ fn a_different_cargo_bk_version_fetches_the_pinned_bootstrap() {
     {
         let (pin, out) = dry_run(Some("9.9.9"));
         let want = format!(
-            "git clone --depth 1 --branch v{pin} https://github.com/medaminben/buildkit-rust build/tools/buildkit-rust"
+            "git clone --depth 1 --branch v{pin} https://github.com/medaminben/buildkit-rust build/tools/buildkit-rust-v{pin}"
         );
         assert!(out.contains(&want), "{out}");
         assert!(
@@ -202,4 +202,19 @@ fn missing_system_packages_are_installed_only_with_yes() {
             "log: {log:?}\n{out}"
         );
     }
+}
+
+#[test]
+fn both_scripts_clone_into_a_folder_per_pin() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../templates/project/scripts");
+    let sh = fs::read_to_string(dir.join("setup.sh.tmpl")).unwrap();
+    assert!(
+        sh.contains(r#"tools="build/tools/buildkit-rust-v$pin""#),
+        "{sh}"
+    );
+    let ps = fs::read_to_string(dir.join("setup.ps1.tmpl")).unwrap();
+    assert!(
+        ps.contains(r#"$tools = "build/tools/buildkit-rust-v$pin""#),
+        "{ps}"
+    );
 }

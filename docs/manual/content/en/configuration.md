@@ -80,7 +80,7 @@ The body uses `##` and `###` headings with an optional `{#anchor}`, paragraphs, 
 
 `scripts/setup.sh` and `scripts/setup.ps1` of a product run these steps.
 
-1. When `cargo bk` is missing or is not the pinned version, clone the buildkit-rust bootstrap at the pinned tag into `build/tools/buildkit-rust` and run it.
+1. When `cargo bk` is missing or is not the pinned version, clone the buildkit-rust bootstrap at the pinned tag into `build/tools/buildkit-rust-v<version>` and run it.
 2. On Linux, install the packages of `system-deps.apt` that are missing. The script asks first, unless you pass `--yes`.
 3. Run `npm ci` (or `npm install` without a lock file) and `cargo fetch`.
 4. Run `cargo bk doctor`, `cargo build` and `cargo test`.

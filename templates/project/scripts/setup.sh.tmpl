@@ -51,7 +51,7 @@ fi
 echo "== 1/4 cargo bk v$pin"
 installed="$(cargo bk --version 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
 if [[ "$installed" != "$pin" ]]; then
-    tools="build/tools/buildkit-rust"
+    tools="build/tools/buildkit-rust-v$pin"
     if [[ ! -d "$tools" ]]; then
         run git clone --depth 1 --branch "v$pin" "$BOOTSTRAP_REPO" "$tools"
     fi

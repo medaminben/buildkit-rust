@@ -56,7 +56,7 @@ try {
     $installed = $null
 }
 if ($installed -ne $pin) {
-    $tools = 'build/tools/buildkit-rust'
+    $tools = "build/tools/buildkit-rust-v$pin"
     if (-not (Test-Path -LiteralPath $tools)) {
         Invoke-Step 'git' @('clone', '--depth', '1', '--branch', "v$pin", $BootstrapRepo, $tools)
     }
