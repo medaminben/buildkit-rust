@@ -73,41 +73,29 @@ fn dry_run_with(cargo_bk_version: Option<&str>, extra: &[&str]) -> (String, Stri
     (pin, stdout)
 }
 
+#[cfg(unix)]
 #[test]
 fn a_different_cargo_bk_version_fetches_the_pinned_bootstrap() {
-    if cfg!(windows) {
-        eprintln!("skipped: setup.ps1 is tested in CI");
-        return;
-    }
-    #[cfg(unix)]
-    {
-        let (pin, out) = dry_run(Some("9.9.9"));
-        let want = format!(
-            "git clone --depth 1 --branch v{pin} https://github.com/medaminben/buildkit-rust build/tools/buildkit-rust-v{pin}"
-        );
-        assert!(out.contains(&want), "{out}");
-        assert!(
-            out.contains("npm ci") || out.contains("npm install"),
-            "{out}"
-        );
-        assert!(out.contains("cargo bk doctor"), "{out}");
-        assert!(out.contains("cargo build"), "{out}");
-        assert!(out.contains("cargo test"), "{out}");
-    }
+    let (pin, out) = dry_run(Some("9.9.9"));
+    let want = format!(
+        "git clone --depth 1 --branch v{pin} https://github.com/medaminben/buildkit-rust build/tools/buildkit-rust-v{pin}"
+    );
+    assert!(out.contains(&want), "{out}");
+    assert!(
+        out.contains("npm ci") || out.contains("npm install"),
+        "{out}"
+    );
+    assert!(out.contains("cargo bk doctor"), "{out}");
+    assert!(out.contains("cargo build"), "{out}");
+    assert!(out.contains("cargo test"), "{out}");
 }
 
+#[cfg(unix)]
 #[test]
 fn a_matching_cargo_bk_version_skips_the_bootstrap() {
-    if cfg!(windows) {
-        eprintln!("skipped: setup.ps1 is tested in CI");
-        return;
-    }
-    #[cfg(unix)]
-    {
-        let (_, out) = dry_run(None);
-        assert!(!out.contains("git clone"), "{out}");
-        assert!(out.contains("cargo bk doctor"), "{out}");
-    }
+    let (_, out) = dry_run(None);
+    assert!(!out.contains("git clone"), "{out}");
+    assert!(out.contains("cargo bk doctor"), "{out}");
 }
 
 #[test]
@@ -176,26 +164,20 @@ fn run_with_missing_package(extra: &[&str]) -> (String, String) {
     (text, fs::read_to_string(&log).unwrap_or_default())
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn missing_system_packages_are_installed_only_with_yes() {
-    if cfg!(not(target_os = "linux")) {
-        eprintln!("skipped: the system package step is Linux only");
-        return;
-    }
-    #[cfg(unix)]
-    {
-        let (out, log) = run_with_missing_package(&[]);
-        assert!(out.contains("Missing: libvulkan1"), "{out}");
-        assert!(out.contains("[y/N]"), "{out}");
-        assert_eq!(log, "", "declined by default, but sudo ran: {log}");
+    let (out, log) = run_with_missing_package(&[]);
+    assert!(out.contains("Missing: libvulkan1"), "{out}");
+    assert!(out.contains("[y/N]"), "{out}");
+    assert_eq!(log, "", "declined by default, but sudo ran: {log}");
 
-        let (out, log) = run_with_missing_package(&["--yes"]);
-        assert!(!out.contains("[y/N]"), "{out}");
-        assert!(
-            log.contains("apt-get install -y libvulkan1"),
-            "log: {log:?}\n{out}"
-        );
-    }
+    let (out, log) = run_with_missing_package(&["--yes"]);
+    assert!(!out.contains("[y/N]"), "{out}");
+    assert!(
+        log.contains("apt-get install -y libvulkan1"),
+        "log: {log:?}\n{out}"
+    );
 }
 
 #[test]

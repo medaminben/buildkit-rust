@@ -6,8 +6,11 @@ use cargo_bk::commands::new::new_project;
 use cargo_bk::commands::package;
 use cargo_bk::exec::{FakeRunner, SystemRunner};
 use cargo_bk::os::Os;
+#[cfg(unix)]
 use cargo_bk::package::PackageCtx;
-use cargo_bk::package::deb::{build_deb, deb_control, deb_version};
+#[cfg(unix)]
+use cargo_bk::package::deb::build_deb;
+use cargo_bk::package::deb::{deb_control, deb_version};
 use cargo_bk::workspace::{PackageMeta, Workspace};
 use common::new_args;
 use std::fs;

@@ -175,6 +175,10 @@ fn set_modes(pkg: &Path, lib: &Path, apps: &[String]) -> Result<()> {
 }
 
 #[cfg(not(unix))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "same signature as the Unix version"
+)]
 fn set_modes(_pkg: &Path, _lib: &Path, _apps: &[String]) -> Result<()> {
     Ok(())
 }

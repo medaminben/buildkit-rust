@@ -1,15 +1,21 @@
 mod common;
 
-use cargo_bk::exec::{Cmd, FakeRunner, SystemRunner};
+use cargo_bk::exec::FakeRunner;
+#[cfg(unix)]
+use cargo_bk::exec::{Cmd, SystemRunner};
+#[cfg(unix)]
 use cargo_bk::package::PackageCtx;
-use cargo_bk::package::appimage::{
-    APPIMAGETOOL_SHA256, APPIMAGETOOL_URL, build_appimage, fetch_tool,
-};
+#[cfg(unix)]
+use cargo_bk::package::appimage::build_appimage;
+use cargo_bk::package::appimage::{APPIMAGETOOL_SHA256, APPIMAGETOOL_URL, fetch_tool};
+#[cfg(unix)]
 use cargo_bk::workspace::PackageMeta;
+#[cfg(unix)]
 use common::{meta as common_meta, version};
 use std::fs;
 use std::path::Path;
 
+#[cfg(unix)]
 fn meta() -> PackageMeta {
     common_meta(
         &["foo-bar-gui", "foo-bar-console"],
@@ -18,6 +24,7 @@ fn meta() -> PackageMeta {
     )
 }
 
+#[cfg(unix)]
 fn setup(root: &Path) {
     for (rel, data) in [
         ("packaging/foo-bar.desktop", "[Desktop Entry]\n"),

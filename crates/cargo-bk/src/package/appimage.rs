@@ -113,6 +113,10 @@ fn make_executable(p: &Path) -> Result<()> {
 }
 
 #[cfg(not(unix))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "same signature as the Unix version"
+)]
 fn make_executable(_p: &Path) -> Result<()> {
     Ok(())
 }
