@@ -62,7 +62,7 @@ fn fresh_product_has_no_mismatch() {
         .iter()
         .filter(|p| matches!(p.site, PinSite::Workflow { .. }))
         .count();
-    assert_eq!(workflow_pins, 2, "ci.yml and codeql.yml");
+    assert_eq!(workflow_pins, 3, "ci.yml, codeql.yml and release.yml");
     assert_eq!(mismatches(&pins).len(), 0);
     cargo_bk(t.path(), &["check-pins"]).success();
 }

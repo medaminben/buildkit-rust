@@ -52,12 +52,19 @@ fn writes_workspace_crates_and_console_app() {
 
     let mut files = Vec::new();
     all_files(tmp.path(), &mut files);
-    // about.hbs is a handlebars template for cargo-about and keeps its braces, ci.yml its
+    // about.hbs is a handlebars template for cargo-about and keeps its braces, the workflows their
     // `${{ github.ref }}`; the icon is binary.
     for f in files.iter().filter(|f| {
-        !["about.hbs", "icon.png", "foo.iss", "ci.yml"]
-            .iter()
-            .any(|n| f.ends_with(n))
+        ![
+            "about.hbs",
+            "icon.png",
+            "foo.iss",
+            "ci.yml",
+            "release.yml",
+            "installer.yml",
+        ]
+        .iter()
+        .any(|n| f.ends_with(n))
     }) {
         let text = fs::read_to_string(f).unwrap();
         assert!(
@@ -351,4 +358,28 @@ fn caller_workflows_exist_without_repo_and_have_no_placeholder() {
         assert!(!workflow(tmp.path(), name).contains("{{branches"));
         assert!(!workflow(tmp.path(), name).contains("{{bk_version"));
     }
+}
+
+#[test]
+fn release_and_installer_callers_are_generated() {
+    let version = env!("BK_VERSION");
+    let tmp = tempfile::tempdir().unwrap();
+    new_project(tmp.path(), &with_repo(Flow::Beta), &FakeRunner::new()).unwrap();
+    let release = workflow(tmp.path(), "release.yml");
+    assert!(
+        release.contains(&format!(
+            "uses: medaminben/buildkit-rust/.github/workflows/release.yml@v{version}"
+        )),
+        "{release}"
+    );
+    assert!(
+        release.contains("installer-workflow: installer.yml"),
+        "{release}"
+    );
+    assert!(release.contains("branches: [main, Beta]"), "{release}");
+    let installer = workflow(tmp.path(), "installer.yml");
+    assert!(installer.contains("workflow_dispatch:"), "{installer}");
+    assert!(installer.contains("cargo bk package --format inno"));
+    assert!(installer.contains("cargo bk package --format all"));
+    assert!(installer.contains("gh release upload \"$TAG\" build/dist/* --clobber"));
 }
