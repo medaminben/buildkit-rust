@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# shellcheck source=lib.sh source-path=SCRIPTDIR
+. "$(dirname "$0")/lib.sh"
+stub_log "curl $*"
+out=""
+while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "-o" ]]; then out="$2"; shift; fi
+    shift
+done
+if [[ -n "$out" ]]; then
+    case "$out" in
+        */rustup-init)
+            printf '#!/usr/bin/env bash\nprintf "rustup-init %%s\\n" "$*" >>"%s"\n' "$CALLS" >"$out"
+            chmod +x "$out" ;;
+        *) echo "stub download" >"$out" ;;
+    esac
+fi
+exit 0

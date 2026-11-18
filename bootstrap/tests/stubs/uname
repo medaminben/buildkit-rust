@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# shellcheck source=lib.sh source-path=SCRIPTDIR
+. "$(dirname "$0")/lib.sh"
+if [[ -n "${STUB_UNAME:-}" ]]; then echo "$STUB_UNAME"; else exec /usr/bin/uname "$@"; fi

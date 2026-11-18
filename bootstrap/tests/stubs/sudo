@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# shellcheck source=lib.sh source-path=SCRIPTDIR
+. "$(dirname "$0")/lib.sh"
+stub_log "sudo $*"; exec "$@"
