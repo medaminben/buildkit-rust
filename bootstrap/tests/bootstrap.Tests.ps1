@@ -212,10 +212,10 @@ Describe 'bootstrap.ps1' {
             Set-Content (Join-Path $script:Clone 'crates/cargo-bk/Cargo.toml') "[package]`nname = `"cargo-bk`"`nversion = `"0.1.0-dev`"`n"
             $script:CloneScript = Join-Path $script:Clone 'bootstrap/bootstrap.ps1'
             $g = @('-C', $script:Clone, '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false')
-            git @g init -q
-            git @g add -A
-            git @g commit -q -m one
-            git @g tag v1.2.3
+            git @g init -q | Out-Null
+            git @g add -A | Out-Null
+            git @g commit -q -m one | Out-Null
+            git @g tag v1.2.3 | Out-Null
             $script:G = $g
         }
         AfterAll {
@@ -239,7 +239,7 @@ Describe 'bootstrap.ps1' {
             $global:Calls | Where-Object { $_ -match '^cargo install --locked --path' } | Should -Not -BeNullOrEmpty
         }
         It 'always installs when HEAD is not exactly at a tag' {
-            git @script:G commit -q --allow-empty -m two
+            git @script:G commit -q --allow-empty -m two | Out-Null
             Invoke-Bootstrap -Params @{ Yes = $true } -Script $script:CloneScript -BkVersion '1.2.3' | Out-Null
             $global:Calls | Where-Object { $_ -match '^cargo install --locked --path' } | Should -Not -BeNullOrEmpty
         }
