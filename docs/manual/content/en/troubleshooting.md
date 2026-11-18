@@ -98,6 +98,7 @@ Doctor prints one line per check: `ok`, `missing` or `wrong version`, then the n
 - `[workspace.metadata.buildkit] version is missing`: the product has no pin to compare with.
 - `warning: <file> differs from buildkit-rust v<version>`: a copied lint file differs from the copy in `cargo-bk`. It is a warning only. In GitHub Actions it appears as an annotation. Run `cargo bk upgrade` to refresh the files, or keep your change on purpose.
 - `install cargo-bk v<version> first: cargo install --git <repository URL> --tag v<version> cargo-bk`: `upgrade` moves the pins to the version of the running `cargo-bk` only. Install that version, then run `upgrade` again. The URL is the address of the buildkit-rust repository.
+- `cargo update -p buildkit failed: <output>`: `upgrade` moved the pins but could not refresh `Cargo.lock`, often because the tag is not on GitHub yet or the machine is offline. Fix the cause, then run `cargo update -p buildkit` yourself.
 
 ## repo-setup {#repo-errors}
 

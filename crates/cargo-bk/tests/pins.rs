@@ -377,3 +377,58 @@ fn docs_work_is_not_scanned() {
     fs::write(t.path().join("docs/work/plan.md"), "--tag v9.9.9\n").unwrap();
     cargo_bk(t.path(), &["check-pins"]).success();
 }
+
+fn stale_root_pin(dir: &Path) {
+    let p = dir.join("Cargo.toml");
+    let text = fs::read_to_string(&p).unwrap().replace(OWN, "0.0.1");
+    fs::write(&p, text).unwrap();
+}
+
+#[test]
+fn upgrade_command_refreshes_the_lock_file() {
+    let t = tempfile::tempdir().unwrap();
+    product(t.path());
+    stale_root_pin(t.path());
+    fs::write(t.path().join("Cargo.lock"), "").unwrap();
+    let mut ws = Workspace::find(t.path()).unwrap();
+    let r = FakeRunner::new().with_output("cargo", 0, "");
+    let mut out = Vec::new();
+    cargo_bk::commands::upgrade::run(&mut ws, OWN, &r, &mut out).unwrap();
+    let calls = r.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].program, "cargo");
+    assert_eq!(calls[0].args, ["update", "-p", "buildkit"]);
+    assert_eq!(calls[0].cwd.as_deref(), Some(t.path()));
+    let out = String::from_utf8(out).unwrap();
+    assert_eq!(out, "updated Cargo.toml\nupdated Cargo.lock\n");
+}
+
+#[test]
+fn upgrade_command_skips_cargo_update_without_a_lock_file_or_a_change() {
+    let t = tempfile::tempdir().unwrap();
+    product(t.path());
+    stale_root_pin(t.path());
+    let mut ws = Workspace::find(t.path()).unwrap();
+    let r = FakeRunner::new();
+    cargo_bk::commands::upgrade::run(&mut ws, OWN, &r, &mut Vec::new()).unwrap();
+    fs::write(t.path().join("Cargo.lock"), "").unwrap();
+    let mut out = Vec::new();
+    cargo_bk::commands::upgrade::run(&mut ws, OWN, &r, &mut out).unwrap();
+    assert_eq!(r.calls().len(), 0);
+    assert_eq!(
+        String::from_utf8(out).unwrap(),
+        format!("already at v{OWN}\n")
+    );
+}
+
+#[test]
+fn upgrade_command_reports_a_failed_cargo_update() {
+    let t = tempfile::tempdir().unwrap();
+    product(t.path());
+    stale_root_pin(t.path());
+    fs::write(t.path().join("Cargo.lock"), "").unwrap();
+    let mut ws = Workspace::find(t.path()).unwrap();
+    let r = FakeRunner::new().with_failure("cargo", 101, "offline");
+    let e = cargo_bk::commands::upgrade::run(&mut ws, OWN, &r, &mut Vec::new()).unwrap_err();
+    assert_eq!(e.to_string(), "cargo update -p buildkit failed: offline");
+}

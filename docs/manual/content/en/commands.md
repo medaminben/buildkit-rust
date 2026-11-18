@@ -103,7 +103,7 @@ In the buildkit-rust repository itself it also reads the examples `buildkit-rust
 
 `cargo bk upgrade <version>`
 
-Moves every pin to `<version>`, with or without a leading `v`: the metadata version, the dependency tag, the workflow lines, and the lint files, which are replaced with the copies of this `cargo-bk`. It prints `updated <file>` for each file that changed, or `already at v<version>`. The version must be the one of the running `cargo-bk`; install it first.
+Moves every pin to `<version>`, with or without a leading `v`: the metadata version, the dependency tag, the workflow lines, and the lint files, which are replaced with the copies of this `cargo-bk`. It prints `updated <file>` for each file that changed, or `already at v<version>`. When the root `Cargo.toml` changed and a `Cargo.lock` exists, it then runs `cargo update -p buildkit`, so a build with `--locked` finds the new tag, and prints `updated Cargo.lock`. The version must be the one of the running `cargo-bk`; install it first.
 
 ## link {#link}
 

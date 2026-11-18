@@ -85,7 +85,12 @@ fn run(cli: &Cli) -> Result<()> {
         }
         Some(Command::Upgrade { version }) => {
             let mut ws = Workspace::find(&std::env::current_dir()?)?;
-            commands::upgrade::run(&mut ws, version)
+            commands::upgrade::run(
+                &mut ws,
+                version,
+                &exec::SystemRunner,
+                &mut std::io::stdout(),
+            )
         }
         Some(Command::Doctor { machine }) => {
             let ws = if *machine {
