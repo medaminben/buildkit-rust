@@ -378,3 +378,53 @@ fn release_and_installer_callers_are_generated() {
     assert!(installer.contains("cargo bk package --format all"));
     assert!(installer.contains("gh release upload \"$TAG\" build/dist/* --clobber"));
 }
+
+#[test]
+fn first_release_sets_the_key_and_the_fallback_version() {
+    let t = tempfile::tempdir().unwrap();
+    let mut a = args(Some("Foo"), &[]);
+    a.first_release = Some("v2.0.0".into());
+    new_project(t.path(), &a, &FakeRunner::new()).unwrap();
+    let text = fs::read_to_string(t.path().join("Cargo.toml")).unwrap();
+    let doc: toml_edit::DocumentMut = text.parse().unwrap();
+    assert_eq!(
+        doc["workspace"]["package"]["version"].as_str(),
+        Some("2.0.0")
+    );
+    assert_eq!(
+        doc["workspace"]["metadata"]["buildkit"]["first-release"].as_str(),
+        Some("2.0.0")
+    );
+    let keys: Vec<&str> = doc["workspace"]["metadata"]["buildkit"]
+        .as_table()
+        .unwrap()
+        .iter()
+        .map(|(k, _)| k)
+        .collect();
+    assert_eq!(keys, ["version", "first-release", "flow", "repo"], "{text}");
+}
+
+#[test]
+fn without_first_release_nothing_changes() {
+    let t = tempfile::tempdir().unwrap();
+    new_project(t.path(), &args(Some("Foo"), &[]), &FakeRunner::new()).unwrap();
+    let text = fs::read_to_string(t.path().join("Cargo.toml")).unwrap();
+    assert!(!text.contains("first-release"));
+    assert!(text.contains("version = \"0.1.0\""));
+}
+
+#[test]
+fn malformed_first_release_is_refused_before_writing() {
+    for bad in ["2.0", "02.0.0", "2.0.0-beta.1", "x"] {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().join("foo");
+        std::fs::create_dir(&dir).unwrap();
+        let mut a = args(Some("Foo"), &[]);
+        a.first_release = Some(bad.into());
+        let e = new_project(&dir, &a, &FakeRunner::new())
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains(bad) && e.contains("X.Y.Z"), "{bad}: {e}");
+        assert!(!dir.join("Cargo.toml").exists());
+    }
+}

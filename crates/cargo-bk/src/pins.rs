@@ -112,7 +112,7 @@ fn doc_version_ranges(line: &str) -> Vec<(usize, usize)> {
 }
 
 /// `X.Y.Z` without leading zeros, the form of a stable release tag.
-fn is_release_version(v: &str) -> bool {
+pub(crate) fn is_release_version(v: &str) -> bool {
     let parts: Vec<&str> = v.split('.').collect();
     parts.len() == 3
         && parts.iter().all(|p| {

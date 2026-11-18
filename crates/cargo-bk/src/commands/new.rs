@@ -13,6 +13,7 @@ use super::OWN_VERSION;
 use crate::docs_rows::{add_layout_row, app_row, crate_row};
 use crate::exec::{Cmd, Runner};
 use crate::names::{CrateName, ProductName, file_stem};
+use crate::pins::is_release_version;
 use crate::templates::{TEMPLATES, Vars, WriteReport, write_tree};
 use crate::workspace::toolchain_channel;
 
@@ -78,12 +79,52 @@ pub struct NewArgs {
     /// Use this buildkit-rust version in the pins (golden fixture only).
     #[arg(long, hide = true, value_name = "x.y.z")]
     pub fixed_bk_version: Option<String>,
+    /// Version of the first release; defaults to 0.1.0.
+    #[arg(long, value_name = "x.y.z")]
+    pub first_release: Option<String>,
 }
 
 /// The rust-toolchain channel of this repository, the one products start on.
 pub(crate) fn rust_version() -> Result<String> {
     toolchain_channel(include_str!("../../../../rust-toolchain.toml"))
         .context("rust-toolchain.toml has no channel")
+}
+
+/// The `--first-release` value without a leading `v`, or an error when it is not `X.Y.Z`.
+fn first_release(args: &NewArgs) -> Result<Option<String>> {
+    let Some(raw) = &args.first_release else {
+        return Ok(None);
+    };
+    let version = raw.strip_prefix('v').unwrap_or(raw);
+    if !is_release_version(version) {
+        bail!("--first-release {raw}: expected X.Y.Z");
+    }
+    Ok(Some(version.to_string()))
+}
+
+/// Sets the fallback version and the `first-release` key in the generated root `Cargo.toml`.
+fn write_first_release(dir: &Path, version: &str) -> Result<()> {
+    let path = dir.join("Cargo.toml");
+    let text = std::fs::read_to_string(&path)?;
+    let mut doc: toml_edit::DocumentMut = text.parse()?;
+    doc["workspace"]["package"]["version"] = toml_edit::value(version);
+    let table = doc["workspace"]["metadata"]["buildkit"]
+        .as_table_mut()
+        .context("Cargo.toml has no [workspace.metadata.buildkit]")?;
+    // toml_edit appends new keys, so move the keys after `version` behind the new one.
+    let after: Vec<String> = table
+        .iter()
+        .map(|(k, _)| k.to_string())
+        .skip_while(|k| k != "version")
+        .skip(1)
+        .collect();
+    let moved: Vec<_> = after.iter().filter_map(|k| table.remove_entry(k)).collect();
+    table.insert("first-release", toml_edit::value(version));
+    for (key, item) in moved {
+        table.insert_formatted(&key, item);
+    }
+    std::fs::write(&path, doc.to_string())?;
+    Ok(())
 }
 
 /// A random version 4 GUID, e.g. for an installer's app id.
@@ -228,6 +269,7 @@ pub fn new_project(dir: &Path, args: &NewArgs, runner: &dyn Runner) -> Result<Wr
     check_target(dir)?;
     let product = product_name(dir, args)?;
     let crates = crate_names(args)?;
+    let first_release = first_release(args)?;
     let rust = rust_version()?;
     let tree = |name: &str| {
         TEMPLATES
@@ -270,6 +312,9 @@ pub fn new_project(dir: &Path, args: &NewArgs, runner: &dyn Runner) -> Result<Wr
         );
     }
 
+    if let Some(version) = &first_release {
+        write_first_release(dir, version)?;
+    }
     layout_rows(dir, &product, &crates, &gui_app, &console_app)?;
 
     if !args.no_build {
