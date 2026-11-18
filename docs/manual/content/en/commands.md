@@ -59,7 +59,7 @@ Adds the app `apps/<product>-<name>` and its layout rows. Exactly one of `--cons
 
 `cargo bk version`
 
-Prints the full version of the product, from the git tags, with the rules the apps use: the nearest tag `vX.Y.Z` or `vX.Y.Z-beta.N`, followed by `+<ahead>.g<sha7>` when HEAD is past the tag. Without a tag, outside the top level of the repository, or without git, it prints the fallback and `-dev`. The fallback is the `version` of a `[package]` in the root `Cargo.toml`, or `0.0.0` when the root has none.
+Prints the full version of the product, from the git tags, with the rules the apps use: the nearest tag `vX.Y.Z` or `vX.Y.Z-beta.N`, followed by `+<ahead>.g<sha7>` when HEAD is past the tag. Without a tag, outside the top level of the repository, or without git, it prints the fallback and `-dev`. The fallback is the `version` of a `[package]` in the root `Cargo.toml`, else the `version` of its `[workspace.package]`, which the apps' `build.rs` also use, or `0.0.0` when the root has neither.
 
 ## package {#package}
 

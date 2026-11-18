@@ -3,6 +3,8 @@ resolver = "3"
 members = ["crates/*", "apps/*"]
 
 [workspace.package]
+# The version without a release tag (`X.Y.Z-dev`); tags give the real one.
+version = "0.1.0"
 edition = "2024"
 rust-version = "{{rust_version}}"
 

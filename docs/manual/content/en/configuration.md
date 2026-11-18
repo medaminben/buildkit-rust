@@ -35,7 +35,7 @@ The line `buildkit = { git = "...", tag = "vX.Y.Z" }` holds the build helper tha
 
 ## Version in the program {#version}
 
-The `build.rs` of every app calls `buildkit::emit_version` with a fallback. The program reads the result with `env!("BK_VERSION")`, which is `X.Y.Z`, and `env!("BK_VERSION_FULL")`. A tag `vX.Y.Z` or `vX.Y.Z-beta.N` on or before the commit gives the version. The `version` fields in `Cargo.toml` are not the source of the version.
+The `build.rs` of every app calls `buildkit::emit_version` with a fallback. The program reads the result with `env!("BK_VERSION")`, which is `X.Y.Z`, and `env!("BK_VERSION_FULL")`. A tag `vX.Y.Z` or `vX.Y.Z-beta.N` on or before the commit gives the version. Without a tag, the version is the fallback followed by `-dev`. The fallback is `version` in `[workspace.package]` of the root `Cargo.toml`, which every crate and app inherits; `cargo bk version` uses the same value.
 
 ## Release labels {#labels}
 

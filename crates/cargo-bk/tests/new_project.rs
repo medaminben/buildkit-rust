@@ -318,6 +318,9 @@ fn generated_product_builds_and_reports_its_version() {
     cargo(&["build", "-p", "foo-gui"]);
     let out = cargo(&["run", "-q", "-p", "foo-console", "--", "--version"]);
     assert_eq!(out.trim(), "foo-console 0.1.0-dev");
+    // `cargo bk version` and the app read the same fallback.
+    let version = cargo_bk::commands::version::run(&dir).unwrap();
+    assert_eq!(version, "0.1.0-dev");
 }
 
 #[test]

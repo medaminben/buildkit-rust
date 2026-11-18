@@ -139,14 +139,16 @@ impl Workspace {
             .with_context(|| format!("cannot write {}", path.display()))
     }
 
-    /// The root package's version, if the root manifest has a `[package]`.
+    /// The root manifest's `[package] version`, else its
+    /// `[workspace.package] version`: the fallback the apps' `build.rs` use.
     #[must_use]
     pub fn root_package_version(&self) -> Option<String> {
-        self.doc
-            .get("package")?
-            .get("version")?
-            .as_str()
-            .map(str::to_string)
+        let package = self.doc.get("package");
+        let workspace = self.doc.get("workspace").and_then(|w| w.get("package"));
+        [package, workspace]
+            .into_iter()
+            .flatten()
+            .find_map(|t| t.get("version")?.as_str().map(str::to_string))
     }
 }
 
@@ -157,6 +159,28 @@ mod tests {
 
     fn ws(dir: &Path, body: &str) {
         fs::write(dir.join("Cargo.toml"), body).unwrap();
+    }
+
+    #[test]
+    fn root_package_version_reads_package_then_workspace_package() {
+        let t = tempfile::tempdir().unwrap();
+        ws(
+            t.path(),
+            "[workspace]\n[workspace.package]\nversion = \"0.3.0\"\n",
+        );
+        let w = Workspace::find(t.path()).unwrap();
+        assert_eq!(w.root_package_version().as_deref(), Some("0.3.0"));
+        ws(
+            t.path(),
+            "[package]\nversion = \"1.0.0\"\n[workspace]\n[workspace.package]\nversion = \"0.3.0\"\n",
+        );
+        let w = Workspace::find(t.path()).unwrap();
+        assert_eq!(w.root_package_version().as_deref(), Some("1.0.0"));
+        ws(t.path(), "[workspace]\n");
+        assert_eq!(
+            Workspace::find(t.path()).unwrap().root_package_version(),
+            None
+        );
     }
 
     #[test]
