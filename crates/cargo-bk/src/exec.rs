@@ -70,6 +70,7 @@ fn find_in(dir: &Path, program: &str) -> Option<PathBuf> {
 }
 
 #[cfg(any(test, feature = "test-support"))]
+#[allow(unused_imports)]
 pub use fake::FakeRunner;
 
 #[cfg(any(test, feature = "test-support"))]
