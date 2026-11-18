@@ -1,7 +1,8 @@
 # CI / CD
 
 buildkit-rust ships three reusable workflows. A product calls them from short workflow files
-and pins them to a buildkit-rust tag, for example `@v0.1.0`. `cargo bk new` writes these callers.
+and pins them to a buildkit-rust tag, for example
+`medaminben/buildkit-rust/.github/workflows/ci.yml@v0.1.0`. `cargo bk new` writes these callers.
 The header comment of each workflow in `.github/workflows/` is the reference for its inputs.
 
 The tag in every `uses:` line must equal `[workspace.metadata.buildkit] version` in the product's
@@ -223,10 +224,26 @@ pull requests and by hand.
 | Job | Content |
 |---|---|
 | `scripts` | `bash -n` and `shellcheck` on the shell scripts, the bootstrap tests, PSScriptAnalyzer and Pester on Windows |
-| `crates` | Python unit tests, `cargo bk check-pins` and `cargo bk manual --check` on this repository, `cargo deny --config lint/deny.toml check`, then `cargo test --workspace --locked -- --include-ignored` on both systems |
+| `crates` | Python unit tests, `cargo bk check-pins` and `cargo bk manual --check` on this repository, `cargo deny --config lint/deny.toml check`, then `cargo test --workspace --locked --no-fail-fast -- --include-ignored` on both systems |
 | `bootstrap-clean` | The bootstrap on a clean runner, a second run that must install nothing, and `cargo bk doctor --machine` |
 | `new-project` | `cargo bk new Foo core physics --repo x/foo`, the expected files, no unfilled placeholders, a second run that creates nothing, `.gitignore`, the manual, a fresh clone that tests and runs, and `cargo bk package` |
 | `fixture-ci` | The reusable `ci.yml` on `tests/fixtures/foo` with `buildkit-ref` set to the commit and `package: true` |
 
 A second bootstrap run reinstalls `cargo-bk` when the clone is not exactly at a tag. The
 `bootstrap-clean` job allows that one line and fails on any other install.
+
+### Releasing buildkit-rust
+
+buildkit-rust does not use `release.yml` or the `semver:*` labels for itself. Its version is
+`[workspace.metadata.buildkit] version` in the root `Cargo.toml`, which the docs, the workflow
+examples and the version `cargo-bk` reports all follow. To release:
+
+1. In a pull request, run `cargo bk upgrade X.Y.Z`. Inside buildkit-rust it accepts any `X.Y.Z`
+   and moves the root version, the examples in `README.md`, `docs/` and the workflow comments,
+   and `Cargo.lock`.
+2. Merge it. [`self-release.yml`](../.github/workflows/self-release.yml) runs on the push to
+   `main`, tags `vX.Y.Z` on that commit and creates the GitHub release, with the commit subjects
+   since the previous tag as notes.
+
+A push whose version is already tagged releases nothing, so ordinary pull requests need no
+label. A version lower than the latest release fails the job.

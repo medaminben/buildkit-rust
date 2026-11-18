@@ -127,18 +127,20 @@ jobs:
           set -euo pipefail
           # cargo's git checkouts carry no tags, so cargo-bk falls back to the root
           # [workspace.metadata.buildkit] version, which moves with each release.
+          # A throwaway release in a scratch clone, not a pin.
+          fake=9.9.9
           scratch="$RUNNER_TEMP/tagged-install"
           git clone -q . "$scratch/repo"
-          sed -i '/^\[workspace.metadata.buildkit\]/,/^\[/ s/^version = ".*"/version = "9.9.9"/' \
+          sed -i "/^\\[workspace.metadata.buildkit\\]/,/^\\[/ s/^version = \".*\"/version = \"$fake\"/" \
             "$scratch/repo/Cargo.toml"
           git -C "$scratch/repo" -c user.name=ci -c user.email=ci@example.invalid \
-            commit -qam "chore: release 9.9.9"
-          git -C "$scratch/repo" tag v9.9.9
-          cargo install --git "file://$scratch/repo" --tag v9.9.9 cargo-bk --locked --root "$scratch/root"
+            commit -qam "chore: release $fake"
+          git -C "$scratch/repo" tag "v$fake"
+          cargo install --git "file://$scratch/repo" --tag "v$fake" cargo-bk --locked --root "$scratch/root"
           version="$("$scratch/root/bin/cargo-bk" --version)"
           echo "cargo-bk --version: $version"
-          [[ "$version" =~ ^9\.9\.9(-dev)?$ ]] \
-            || { echo "::error::a v9.9.9 git install reports $version"; exit 1; }
+          [[ "$version" == "$fake" || "$version" == "$fake-dev" ]] \
+            || { echo "::error::a v$fake git install reports $version"; exit 1; }
 
   bootstrap-clean:
     name: bootstrap on ${{ matrix.os }}

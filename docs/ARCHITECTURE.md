@@ -16,7 +16,7 @@ installers, shared lint configuration and the CI and release flow.
 | [`bootstrap/`](../bootstrap) | `bootstrap.sh` and `bootstrap.ps1`: machine setup |
 | [`tools/release/`](../tools/release) | `next_version.py` and `plan_release.py`: tag planning for `release.yml` |
 | [`tools/manual/`](../tools/manual) | `build_manual.py` and its assets: renders the manual, embedded into `cargo-bk` |
-| [`.github/workflows/`](../.github/workflows) | `ci.yml`, `codeql.yml` and `release.yml` (reusable), `self-test.yml` (this repository's own CI) |
+| [`.github/workflows/`](../.github/workflows) | `ci.yml`, `codeql.yml` and `release.yml` (reusable), `self-test.yml` and `self-release.yml` (this repository's own CI and release) |
 | [`tests/fixtures/`](../tests/fixtures) | `foo`: a committed generated product, kept equal to a fresh `cargo bk new` |
 
 ## The `buildkit` crate
@@ -85,12 +85,14 @@ embedded in the running cargo-bk, and a difference is a warning, never a failure
 
 buildkit-rust applies the same check to itself. Its root `Cargo.toml` has
 `[workspace.metadata.buildkit] version`, and when a repository has `crates/cargo-bk`,
-`find_pins` also reads `README.md` and every `.md` file under `docs/` for
-`buildkit-rust/.github/workflows/<file>@v<version>` and `--tag v<version>`. A placeholder such
+`find_pins` also reads `README.md`, every `.md` file under `docs/` and its own workflows for
+`buildkit-rust/.github/workflows/<file>@v<version>`, `--tag v<version>` and
+`--branch v<version>`. A placeholder such
 as `vX.Y.Z` is not a pin. The lint-file comparison is skipped there, because those files are the
 originals. [self-test.yml](../.github/workflows/self-test.yml) runs
-`cargo bk check-pins`. When a new release tag is cut, change the version in the root
-`Cargo.toml` and in the examples together.
+`cargo bk check-pins`. Inside buildkit-rust, `cargo bk upgrade X.Y.Z` accepts any release
+version, moves the root version and every example together and leaves the lint files alone; see
+[Releasing buildkit-rust](CI_CD.md#releasing-buildkit-rust).
 
 ### `link`
 
