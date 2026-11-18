@@ -8,7 +8,7 @@
 param()
 
 BeforeAll {
-    $script:Bootstrap = Join-Path $PSScriptRoot '..' 'bootstrap.ps1'
+    $script:Bootstrap = Join-Path $PSScriptRoot '../bootstrap.ps1'
 
     function global:Write-Call {
         param([string]$Name, [object[]]$CallArgs)
@@ -122,9 +122,9 @@ Describe 'bootstrap.ps1' {
             # A copy without crates/ keeps the real cargo-bk crate out of it.
             $dir = Join-Path ([IO.Path]::GetTempPath()) ('bk nocrates ' + [guid]::NewGuid())
             New-Item -ItemType Directory -Path (Join-Path $dir 'bootstrap') -Force | Out-Null
-            Copy-Item $script:Bootstrap (Join-Path $dir 'bootstrap' 'bootstrap.ps1')
+            Copy-Item $script:Bootstrap (Join-Path $dir 'bootstrap/bootstrap.ps1')
             try {
-                $out = Invoke-Bootstrap -Params @{ Yes = $true; WithEditor = $true } -Script (Join-Path $dir 'bootstrap' 'bootstrap.ps1')
+                $out = Invoke-Bootstrap -Params @{ Yes = $true; WithEditor = $true } -Script (Join-Path $dir 'bootstrap/bootstrap.ps1')
             } finally {
                 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
             }
@@ -188,10 +188,10 @@ Describe 'bootstrap.ps1' {
         It 'passes --path to cargo install as one argument' {
             $dir = Join-Path ([IO.Path]::GetTempPath()) ("bk test " + [guid]::NewGuid())
             try {
-                New-Item -ItemType Directory -Path (Join-Path $dir 'bootstrap'), (Join-Path $dir 'crates' 'cargo-bk') -Force | Out-Null
-                Copy-Item $script:Bootstrap (Join-Path $dir 'bootstrap' 'bootstrap.ps1')
-                Set-Content (Join-Path $dir 'crates' 'cargo-bk' 'Cargo.toml') "[package]`nname = `"cargo-bk`"`nversion = `"0.1.0`"`n"
-                Invoke-Bootstrap -Missing 'cargo-bk' -Params @{ Yes = $true } -Script (Join-Path $dir 'bootstrap' 'bootstrap.ps1') | Out-Null
+                New-Item -ItemType Directory -Path (Join-Path $dir 'bootstrap'), (Join-Path $dir 'crates/cargo-bk') -Force | Out-Null
+                Copy-Item $script:Bootstrap (Join-Path $dir 'bootstrap/bootstrap.ps1')
+                Set-Content (Join-Path $dir 'crates/cargo-bk/Cargo.toml') "[package]`nname = `"cargo-bk`"`nversion = `"0.1.0`"`n"
+                Invoke-Bootstrap -Missing 'cargo-bk' -Params @{ Yes = $true } -Script (Join-Path $dir 'bootstrap/bootstrap.ps1') | Out-Null
                 $install = $global:CallArgs.Where({ $_[0] -eq 'cargo' -and $_[1] -eq 'install' -and $_ -contains '--path' })[0]
                 $install | Should -Not -BeNullOrEmpty
                 $path = $install[([array]::IndexOf($install, '--path') + 1)]
@@ -207,10 +207,10 @@ Describe 'bootstrap.ps1' {
     Context 'cargo-bk version against the clone tag' {
         BeforeAll {
             $script:Clone = Join-Path ([IO.Path]::GetTempPath()) ('bk clone ' + [guid]::NewGuid())
-            New-Item -ItemType Directory -Path (Join-Path $script:Clone 'bootstrap'), (Join-Path $script:Clone 'crates' 'cargo-bk') -Force | Out-Null
-            Copy-Item $script:Bootstrap (Join-Path $script:Clone 'bootstrap' 'bootstrap.ps1')
-            Set-Content (Join-Path $script:Clone 'crates' 'cargo-bk' 'Cargo.toml') "[package]`nname = `"cargo-bk`"`nversion = `"0.1.0-dev`"`n"
-            $script:CloneScript = Join-Path $script:Clone 'bootstrap' 'bootstrap.ps1'
+            New-Item -ItemType Directory -Path (Join-Path $script:Clone 'bootstrap'), (Join-Path $script:Clone 'crates/cargo-bk') -Force | Out-Null
+            Copy-Item $script:Bootstrap (Join-Path $script:Clone 'bootstrap/bootstrap.ps1')
+            Set-Content (Join-Path $script:Clone 'crates/cargo-bk/Cargo.toml') "[package]`nname = `"cargo-bk`"`nversion = `"0.1.0-dev`"`n"
+            $script:CloneScript = Join-Path $script:Clone 'bootstrap/bootstrap.ps1'
             $g = @('-C', $script:Clone, '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false')
             git @g init -q
             git @g add -A
@@ -248,9 +248,9 @@ Describe 'bootstrap.ps1' {
     Context 'doctor as the last step' {
         BeforeAll {
             $script:Root = Join-Path ([IO.Path]::GetTempPath()) ('bk doctor ' + [guid]::NewGuid())
-            $script:Sub = Join-Path $script:Root 'prod' 'sub'
+            $script:Sub = Join-Path $script:Root 'prod/sub'
             New-Item -ItemType Directory -Path $script:Sub -Force | Out-Null
-            Set-Content (Join-Path $script:Root 'prod' 'Cargo.toml') "[workspace]`n[workspace.metadata.buildkit]`nversion = `"0.1.0`"`n"
+            Set-Content (Join-Path $script:Root 'prod/Cargo.toml') "[workspace]`n[workspace.metadata.buildkit]`nversion = `"0.1.0`"`n"
         }
         AfterAll {
             Remove-Item $script:Root -Recurse -Force -ErrorAction SilentlyContinue
