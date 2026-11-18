@@ -13,6 +13,8 @@ pub struct SystemGit;
 impl Git for SystemGit {
     fn run(&self, dir: &Path, args: &[&str]) -> Option<String> {
         let out = Command::new("git")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .args(["-c", "log.showSignature=false"])
             .arg("-C")
             .arg(dir)
             .args(args)

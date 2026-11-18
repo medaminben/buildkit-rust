@@ -1,7 +1,38 @@
-use buildkit::{SystemGit, Version, resolve};
+use buildkit::{Git, SystemGit, Version, resolve};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
+
+/// An empty global config, so the user's own git config never leaks in.
+fn empty_config() -> &'static Path {
+    static F: OnceLock<PathBuf> = OnceLock::new();
+    F.get_or_init(|| {
+        let p =
+            std::env::temp_dir().join(format!("buildkit-empty-gitconfig-{}", std::process::id()));
+        fs::write(&p, "").unwrap();
+        p
+    })
+}
+
+/// Git with global and system config disabled, set per command (no process env).
+struct IsolatedGit;
+
+impl Git for IsolatedGit {
+    fn run(&self, dir: &Path, args: &[&str]) -> Option<String> {
+        let out = Command::new("git")
+            .env("GIT_CONFIG_GLOBAL", empty_config())
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .args(["-c", "log.showSignature=false", "-C"])
+            .arg(dir)
+            .args(args)
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+}
 
 fn git(dir: &Path, args: &[&str]) {
     let out = Command::new("git")
@@ -15,6 +46,8 @@ fn git(dir: &Path, args: &[&str]) {
         ])
         .args(["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
         .args(args)
+        .env("GIT_CONFIG_GLOBAL", empty_config())
+        .env("GIT_CONFIG_NOSYSTEM", "1")
         .current_dir(dir)
         .output()
         .unwrap();
@@ -47,7 +80,7 @@ fn tag(d: &Path, t: &str) {
 }
 
 fn get(d: &Path, fallback: &str) -> Version {
-    resolve(d, fallback, &SystemGit)
+    resolve(d, fallback, &IsolatedGit)
 }
 
 fn check(d: &Path, fallback: &str, numeric: &str, full: &str) {
@@ -179,4 +212,12 @@ fn subfolder_of_tagged_repo() {
     let sub = d.join("sub");
     fs::create_dir_all(&sub).unwrap();
     check(&sub, "3.0.0", "3.0.0", "3.0.0-dev");
+}
+
+#[test]
+fn system_git_runs() {
+    let r = root();
+    assert!(SystemGit.run(r.path(), &["--version"]).is_some());
+    assert_eq!(get(r.path(), "2.0.0").full, "2.0.0-dev");
+    assert_eq!(resolve(r.path(), "2.0.0", &SystemGit).full, "2.0.0-dev");
 }

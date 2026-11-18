@@ -82,14 +82,14 @@ pub fn resolve(source_dir: &Path, fallback: &str, git: &dyn Git) -> Version {
 }
 
 /// `build.rs` entry point. Resolves the version of the package being built and
-/// exports it as `BUILDKIT_VERSION` and `BUILDKIT_VERSION_FULL`.
+/// exports it as `BK_VERSION` and `BK_VERSION_FULL`.
 ///
 /// # Panics
 /// When `CARGO_MANIFEST_DIR` is not set, i.e. outside a build script.
 pub fn emit_version(fallback: Fallback) {
     let dir = std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set");
     let v = resolve(Path::new(&dir), fallback.0, &SystemGit);
-    println!("cargo:rustc-env=BUILDKIT_VERSION={}", v.numeric);
-    println!("cargo:rustc-env=BUILDKIT_VERSION_FULL={}", v.full);
+    println!("cargo:rustc-env=BK_VERSION={}", v.numeric);
+    println!("cargo:rustc-env=BK_VERSION_FULL={}", v.full);
     println!("cargo:rerun-if-changed=build.rs");
 }
