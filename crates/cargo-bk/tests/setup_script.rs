@@ -1,22 +1,16 @@
 //! Runs the generated `scripts/setup.sh --dry-run` against stub tools.
 
-use cargo_bk::commands::new::{Flow, NewArgs, new_project};
+mod common;
+
+use cargo_bk::commands::new::new_project;
 use cargo_bk::exec::FakeRunner;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
 fn generate(dir: &Path) -> String {
-    let args = NewArgs {
-        name: Some("Foo".to_string()),
-        crates: Vec::new(),
-        repo: Some("x/foo".to_string()),
-        flow: Flow::Direct,
-        no_build: true,
-        fixed_guid: None,
-        fixed_year: None,
-        fixed_bk_version: None,
-    };
+    let mut args = common::new_args(Some("Foo"), &[]);
+    args.repo = Some("x/foo".to_string());
     new_project(dir, &args, &FakeRunner::new()).unwrap();
     let cargo = fs::read_to_string(dir.join("Cargo.toml")).unwrap();
     let line = cargo

@@ -1,23 +1,21 @@
+mod common;
+
 use cargo_bk::exec::{Cmd, FakeRunner, SystemRunner};
 use cargo_bk::package::PackageCtx;
 use cargo_bk::package::appimage::{
     APPIMAGETOOL_SHA256, APPIMAGETOOL_URL, build_appimage, fetch_tool,
 };
 use cargo_bk::workspace::PackageMeta;
+use common::{meta as common_meta, version};
 use std::fs;
 use std::path::Path;
 
 fn meta() -> PackageMeta {
-    PackageMeta {
-        display_name: "Foo Bar".into(),
-        main_app: "foo-bar-gui".into(),
-        apps: vec!["foo-bar-gui".into(), "foo-bar-console".into()],
-        iss: "packaging/foo-bar.iss".into(),
-        desktop: "packaging/foo-bar.desktop".into(),
-        icon: "packaging/icon.png".into(),
-        extra_files: vec![],
-        system_deps_apt: vec![],
-    }
+    common_meta(
+        &["foo-bar-gui", "foo-bar-console"],
+        "packaging/foo-bar.iss",
+        &[],
+    )
 }
 
 fn setup(root: &Path) {
@@ -30,13 +28,6 @@ fn setup(root: &Path) {
         let p = root.join(rel);
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, data).unwrap();
-    }
-}
-
-fn version() -> buildkit::Version {
-    buildkit::Version {
-        numeric: "1.2.3".into(),
-        full: "1.2.3-beta.4".into(),
     }
 }
 
@@ -155,24 +146,19 @@ fn download_failure_is_an_error() {
 fn real_appimage_of_a_generated_product() {
     use buildkit::SystemGit;
     use cargo_bk::commands::link::rewrite_dep;
-    use cargo_bk::commands::new::{Flow, NewArgs, new_project};
+    use cargo_bk::commands::new::new_project;
     use cargo_bk::commands::package;
     use cargo_bk::os::Os;
     use cargo_bk::workspace::Workspace;
     use std::process::Command;
 
     let tmp = tempfile::tempdir().unwrap();
-    let args = NewArgs {
-        name: Some("Foo".into()),
-        crates: vec![],
-        repo: None,
-        flow: Flow::Direct,
-        no_build: true,
-        fixed_guid: None,
-        fixed_year: None,
-        fixed_bk_version: None,
-    };
-    new_project(tmp.path(), &args, &SystemRunner).unwrap();
+    new_project(
+        tmp.path(),
+        &common::new_args(Some("Foo"), &[]),
+        &SystemRunner,
+    )
+    .unwrap();
     let mut ws = Workspace::find(tmp.path()).unwrap();
     rewrite_dep(
         &mut ws,

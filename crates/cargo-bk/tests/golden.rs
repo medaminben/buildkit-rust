@@ -1,7 +1,9 @@
 //! The committed fixture product `tests/fixtures/foo` must equal a fresh `cargo bk new` with the
 //! same fixed values, so it cannot go stale. The self-test runs the product's CI on it.
 
-use cargo_bk::commands::new::{Flow, NewArgs, new_project};
+mod common;
+
+use cargo_bk::commands::new::new_project;
 use cargo_bk::exec::FakeRunner;
 use std::collections::BTreeMap;
 use std::fs;
@@ -58,16 +60,11 @@ fn files(dir: &Path) -> BTreeMap<String, Vec<u8>> {
 #[test]
 fn fixture_matches_a_fresh_generation() {
     let tmp = tempfile::tempdir().unwrap();
-    let args = NewArgs {
-        name: Some("Foo".to_string()),
-        crates: vec!["core".to_string(), "physics".to_string()],
-        repo: Some("x/foo".to_string()),
-        flow: Flow::Direct,
-        no_build: true,
-        fixed_guid: Some(FIXED_GUID.to_string()),
-        fixed_year: Some(FIXED_YEAR),
-        fixed_bk_version: Some(FIXED_BK_VERSION.to_string()),
-    };
+    let mut args = common::new_args(Some("Foo"), &["core", "physics"]);
+    args.repo = Some("x/foo".to_string());
+    args.fixed_guid = Some(FIXED_GUID.to_string());
+    args.fixed_year = Some(FIXED_YEAR);
+    args.fixed_bk_version = Some(FIXED_BK_VERSION.to_string());
     new_project(tmp.path(), &args, &FakeRunner::new()).unwrap();
     let fresh = files(tmp.path());
 

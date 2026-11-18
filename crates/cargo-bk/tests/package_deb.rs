@@ -1,12 +1,15 @@
+mod common;
+
 use buildkit::Git;
 use cargo_bk::commands::link::rewrite_dep;
-use cargo_bk::commands::new::{Flow, NewArgs, new_project};
+use cargo_bk::commands::new::new_project;
 use cargo_bk::commands::package;
 use cargo_bk::exec::{FakeRunner, SystemRunner};
 use cargo_bk::os::Os;
 use cargo_bk::package::PackageCtx;
 use cargo_bk::package::deb::{build_deb, deb_control, deb_version};
 use cargo_bk::workspace::{PackageMeta, Workspace};
+use common::new_args;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -19,16 +22,11 @@ impl Git for NoGit {
 }
 
 fn meta(deps: &[&str]) -> PackageMeta {
-    PackageMeta {
-        display_name: "Foo Bar".into(),
-        main_app: "foo-bar-gui".into(),
-        apps: vec!["foo-bar-gui".into(), "foo-bar-console".into()],
-        iss: "packaging/foo-bar.iss".into(),
-        desktop: "packaging/foo-bar.desktop".into(),
-        icon: "packaging/icon.png".into(),
-        extra_files: vec![],
-        system_deps_apt: deps.iter().map(|d| (*d).to_string()).collect(),
-    }
+    common::meta(
+        &["foo-bar-gui", "foo-bar-console"],
+        "packaging/foo-bar.iss",
+        deps,
+    )
 }
 
 #[test]
@@ -226,17 +224,7 @@ fn modes_are_explicit() {
 #[ignore = "builds a generated product with eframe; takes minutes"]
 fn real_deb_of_a_generated_product() {
     let tmp = tempfile::tempdir().unwrap();
-    let args = NewArgs {
-        name: Some("Foo".into()),
-        crates: vec![],
-        repo: None,
-        flow: Flow::Direct,
-        no_build: true,
-        fixed_guid: None,
-        fixed_year: None,
-        fixed_bk_version: None,
-    };
-    new_project(tmp.path(), &args, &SystemRunner).unwrap();
+    new_project(tmp.path(), &new_args(Some("Foo"), &[]), &SystemRunner).unwrap();
     let mut ws = Workspace::find(tmp.path()).unwrap();
     let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     rewrite_dep(&mut ws, &checkout).unwrap();

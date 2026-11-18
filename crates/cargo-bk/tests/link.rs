@@ -1,6 +1,8 @@
+mod common;
+
 use assert_cmd::Command as Cmd;
 use cargo_bk::commands::link::{link, restore_dep, rewrite_dep, unlink};
-use cargo_bk::commands::new::{Flow, NewArgs, new_project};
+use cargo_bk::commands::new::new_project;
 use cargo_bk::exec::FakeRunner;
 use cargo_bk::workspace::Workspace;
 use std::fs;
@@ -403,16 +405,7 @@ fn rewritten_product_builds_against_the_local_crate() {
     // published, so this exercises --rewrite-dep.
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("My Projékt dir").join("foo");
-    let a = NewArgs {
-        name: None,
-        crates: vec!["core".to_string()],
-        repo: None,
-        flow: Flow::Direct,
-        no_build: true,
-        fixed_guid: None,
-        fixed_year: None,
-        fixed_bk_version: None,
-    };
+    let a = common::new_args(None, &["core"]);
     new_project(&dir, &a, &FakeRunner::new()).unwrap();
     let checkout = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap();
     let mut ws = Workspace::find(&dir).unwrap();

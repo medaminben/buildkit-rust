@@ -1,4 +1,5 @@
-use cargo_bk::commands::new::{Flow, NewArgs, new_project};
+mod common;
+
 use cargo_bk::exec::FakeRunner;
 use cargo_bk::pins::{PinSite, find_pins, mismatches, upgrade};
 use cargo_bk::workspace::Workspace;
@@ -10,17 +11,7 @@ const OWN: &str = env!("BK_VERSION");
 
 /// A freshly generated product, with the caller workflows as `new` writes them.
 fn generated_product(dir: &Path) {
-    let args = NewArgs {
-        name: Some("Foo".into()),
-        crates: vec![],
-        repo: None,
-        flow: Flow::Direct,
-        no_build: true,
-        fixed_guid: None,
-        fixed_year: None,
-        fixed_bk_version: None,
-    };
-    new_project(dir, &args, &FakeRunner::new()).unwrap();
+    common::generate_product(dir, &[]);
 }
 
 /// A product whose `ci.yml` is a minimal caller with a known line layout.
@@ -37,11 +28,7 @@ fn product(dir: &Path) {
 }
 
 fn cargo_bk(dir: &Path, args: &[&str]) -> assert_cmd::assert::Assert {
-    assert_cmd::Command::cargo_bin("cargo-bk")
-        .unwrap()
-        .current_dir(dir)
-        .args(args)
-        .assert()
+    common::bk(dir).args(args).assert()
 }
 
 #[test]

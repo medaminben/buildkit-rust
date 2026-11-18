@@ -1,8 +1,10 @@
+mod common;
+
 use assert_cmd::Command;
+use common::git;
 use predicates::prelude::*;
 use std::fs;
 use std::path::Path;
-use std::process::Command as Proc;
 
 fn cargo_bk(dir: &Path) -> Command {
     let empty = dir.join("empty-gitconfig");
@@ -12,32 +14,6 @@ fn cargo_bk(dir: &Path) -> Command {
         .env("GIT_CONFIG_GLOBAL", &empty)
         .env("GIT_CONFIG_NOSYSTEM", "1");
     c
-}
-
-fn git(dir: &Path, args: &[&str]) {
-    let empty = dir.join("empty-gitconfig");
-    fs::write(&empty, "").unwrap();
-    let out = Proc::new("git")
-        .args([
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@t",
-            "-c",
-            "init.defaultBranch=main",
-        ])
-        .args(["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
-        .args(args)
-        .env("GIT_CONFIG_GLOBAL", &empty)
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .current_dir(dir)
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "git {args:?}: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
 }
 
 fn workspace(root: &Path, manifest: &str) {

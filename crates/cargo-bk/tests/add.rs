@@ -1,26 +1,16 @@
-use assert_cmd::Command;
+mod common;
+
 use cargo_bk::commands::add::{AppKind, add_app, add_crate};
-use cargo_bk::commands::new::{Flow, NewArgs, new_project};
 use cargo_bk::docs_rows::ensure_row;
-use cargo_bk::exec::FakeRunner;
 use cargo_bk::workspace::Workspace;
+use common::bk;
 use std::fs;
 use std::path::Path;
 
 const MARKER: &str = "<!-- bk:layout -->";
 
 fn product(dir: &Path) {
-    let args = NewArgs {
-        name: Some("Foo".to_string()),
-        crates: vec!["core".to_string()],
-        repo: None,
-        flow: Flow::Direct,
-        no_build: true,
-        fixed_guid: None,
-        fixed_year: None,
-        fixed_bk_version: None,
-    };
-    new_project(dir, &args, &FakeRunner::new()).unwrap();
+    common::generate_product(dir, &["core"]);
 }
 
 fn read(dir: &Path, rel: &str) -> String {
@@ -142,12 +132,6 @@ fn add_app_console_creates_the_app_and_a_row_and_leaves_the_package_apps_alone()
     assert!(read(root, "apps/foo-viewer/src/main.rs").contains("Foo"));
     let err = add_app(&ws, "tool", AppKind::Gui).unwrap_err().to_string();
     assert_eq!(err, "app foo-tool already exists");
-}
-
-fn bk(dir: &Path) -> Command {
-    let mut c = Command::cargo_bin("cargo-bk").unwrap();
-    c.current_dir(dir);
-    c
 }
 
 #[test]

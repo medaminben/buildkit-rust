@@ -1,21 +1,11 @@
+mod common;
+
 use cargo_bk::commands::new::{Flow, NewArgs, new_project};
 use cargo_bk::exec::{FakeRunner, SystemRunner};
+use common::new_args as args;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-
-fn args(name: Option<&str>, crates: &[&str]) -> NewArgs {
-    NewArgs {
-        name: name.map(str::to_string),
-        crates: crates.iter().map(|c| (*c).to_string()).collect(),
-        repo: None,
-        flow: Flow::Direct,
-        no_build: true,
-        fixed_guid: None,
-        fixed_year: None,
-        fixed_bk_version: None,
-    }
-}
 
 fn all_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
     for e in fs::read_dir(dir).unwrap() {

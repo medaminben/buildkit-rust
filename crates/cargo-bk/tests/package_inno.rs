@@ -1,28 +1,15 @@
+mod common;
+
 use cargo_bk::exec::{FakeRunner, SystemRunner};
 use cargo_bk::package::PackageCtx;
 use cargo_bk::package::inno::{build_inno, iscc_args};
 use cargo_bk::workspace::PackageMeta;
+use common::{meta as common_meta, version};
 use std::fs;
 use std::path::Path;
 
 fn meta() -> PackageMeta {
-    PackageMeta {
-        display_name: "Foo Bar".into(),
-        main_app: "foo-bar-gui".into(),
-        apps: vec!["foo-bar-gui".into()],
-        iss: "installer/foo-bar.iss".into(),
-        desktop: "packaging/foo-bar.desktop".into(),
-        icon: "packaging/icon.png".into(),
-        extra_files: vec![],
-        system_deps_apt: vec![],
-    }
-}
-
-fn version() -> buildkit::Version {
-    buildkit::Version {
-        numeric: "1.2.3".into(),
-        full: "1.2.3-beta.4".into(),
-    }
+    common_meta(&["foo-bar-gui"], "installer/foo-bar.iss", &[])
 }
 
 #[test]
