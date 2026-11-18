@@ -43,6 +43,11 @@ fn stubs(dir: &Path, cargo_bk_version: &str) {
 
 #[cfg(unix)]
 fn dry_run(cargo_bk_version: Option<&str>) -> (String, String) {
+    dry_run_with(cargo_bk_version, &[])
+}
+
+#[cfg(unix)]
+fn dry_run_with(cargo_bk_version: Option<&str>, extra: &[&str]) -> (String, String) {
     let tmp = tempfile::tempdir().unwrap();
     let product = tmp.path().join("foo");
     let pin = generate(&product);
@@ -57,6 +62,7 @@ fn dry_run(cargo_bk_version: Option<&str>) -> (String, String) {
     );
     let out = Command::new("bash")
         .args(["scripts/setup.sh", "--dry-run"])
+        .args(extra)
         .current_dir(&product)
         .env("PATH", path)
         .output()
@@ -128,4 +134,38 @@ fn setup_sh_passes_shellcheck() {
         "{}",
         String::from_utf8_lossy(&out.stdout)
     );
+}
+
+#[cfg(unix)]
+fn apt_get_available() -> bool {
+    Command::new("sh")
+        .args(["-c", "command -v apt-get"])
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+#[test]
+fn the_system_deps_step_names_the_products_packages_and_yes_skips_the_prompt() {
+    #[cfg(unix)]
+    {
+        if !apt_get_available() {
+            eprintln!("skipped: no apt-get on this machine");
+            return;
+        }
+        let (_, out) = dry_run(None);
+        // Either every package is installed, or the missing ones appear in the install line.
+        assert!(out.contains("== 2/4 system packages"), "{out}");
+        let all_present = out.contains("All system packages are installed.");
+        assert!(
+            all_present || out.contains("+ sudo apt-get install -y "),
+            "{out}"
+        );
+        let (_, yes) = dry_run_with(None, &["--yes"]);
+        assert!(!yes.contains("[y/N]"), "{yes}");
+        assert!(
+            yes.contains("All system packages are installed.")
+                || yes.contains("+ sudo apt-get install -y "),
+            "{yes}"
+        );
+    }
 }

@@ -31,14 +31,6 @@ impl Flow {
         }
     }
 
-    /// The branch pull requests target.
-    fn pr_target(self) -> &'static str {
-        match self {
-            Flow::Direct => "main",
-            Flow::Beta => "Beta",
-        }
-    }
-
     /// The CONTRIBUTING.md paragraph describing the flow.
     fn workflow(self) -> &'static str {
         match self {
@@ -167,10 +159,10 @@ fn vars(product: &ProductName, krate: &CrateName, args: &NewArgs, rust: &str) ->
         ("repo", repo),
         ("owner", owner),
         ("bk_version", OWN_VERSION.to_string()),
-        ("app_id_guid", new_guid()),
+        // Braced, as Inno Setup spells an AppId; the .iss escapes the leading brace.
+        ("app_id_guid", format!("{{{}}}", new_guid())),
         ("year", this_year().to_string()),
         ("flow", args.flow.as_str().to_string()),
-        ("pr_target", args.flow.pr_target().to_string()),
         ("workflow", args.flow.workflow().to_string()),
         ("branches", args.flow.branches().to_string()),
         ("rust_version", rust.to_string()),

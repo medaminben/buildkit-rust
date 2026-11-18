@@ -57,7 +57,7 @@ if [[ "$installed" != "$pin" ]]; then
     fi
     bootstrap_args=()
     $assume_yes && bootstrap_args+=(--yes)
-    run bash "$tools/bootstrap/bootstrap.sh" "${bootstrap_args[@]}"
+    run bash "$tools/bootstrap/bootstrap.sh" ${bootstrap_args[@]+"${bootstrap_args[@]}"}
     export PATH="$HOME/.cargo/bin:$PATH"
 fi
 

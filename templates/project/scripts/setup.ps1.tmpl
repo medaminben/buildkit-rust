@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $BootstrapRepo = 'https://github.com/medaminben/buildkit-rust'
 
-Set-Location (Split-Path -Parent $PSScriptRoot)
+Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 
 function Invoke-Step {
     param([string]$Program, [string[]]$Arguments)

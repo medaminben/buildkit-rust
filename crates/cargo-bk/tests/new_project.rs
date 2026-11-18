@@ -53,10 +53,11 @@ fn writes_workspace_crates_and_console_app() {
     let mut files = Vec::new();
     all_files(tmp.path(), &mut files);
     // about.hbs is a handlebars template for cargo-about and keeps its braces; the icon is binary.
-    for f in files
-        .iter()
-        .filter(|f| !f.ends_with("about.hbs") && !f.ends_with("icon.png"))
-    {
+    for f in files.iter().filter(|f| {
+        !["about.hbs", "icon.png", "foo.iss"]
+            .iter()
+            .any(|n| f.ends_with(n))
+    }) {
         let text = fs::read_to_string(f).unwrap();
         assert!(
             !text.contains("{{"),
@@ -107,6 +108,7 @@ fn with_repo(flow: Flow) -> NewArgs {
 
 fn app_id(dir: &Path) -> String {
     let iss = fs::read_to_string(dir.join("installer/foo.iss")).unwrap();
+    assert!(iss.lines().any(|l| l == "AppId={{#MyAppId}"), "{iss}");
     let line = iss
         .lines()
         .find(|l| l.starts_with("#define MyAppId"))
@@ -190,7 +192,8 @@ fn app_id_is_an_upper_case_guid_and_differs_per_product() {
     new_project(b.path(), &with_repo(Flow::Direct), &FakeRunner::new()).unwrap();
     let (ia, ib) = (app_id(a.path()), app_id(b.path()));
     for id in [&ia, &ib] {
-        let inner = id.trim_matches(|c| c == '{' || c == '}');
+        assert!(id.starts_with('{') && id.ends_with('}'), "{id}");
+        let inner = &id[1..id.len() - 1];
         assert_eq!(inner.len(), 36, "{id}");
         assert!(
             inner
