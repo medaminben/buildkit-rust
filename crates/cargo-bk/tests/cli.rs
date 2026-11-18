@@ -48,11 +48,10 @@ fn workspace(root: &Path, manifest: &str) {
 fn version_flag_works_with_and_without_bk() {
     let t = tempfile::tempdir().unwrap();
     for args in [&["--version"][..], &["bk", "--version"][..]] {
-        cargo_bk(t.path())
-            .args(args)
-            .assert()
-            .success()
-            .stdout(predicate::str::is_match(r"\d+\.\d+\.\d+").unwrap());
+        cargo_bk(t.path()).args(args).assert().success().stdout(
+            predicate::str::is_match(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?(\+[0-9A-Za-z.]+)?\n$")
+                .unwrap(),
+        );
     }
 }
 

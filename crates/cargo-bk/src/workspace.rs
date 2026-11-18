@@ -80,12 +80,14 @@ impl Workspace {
                 .map(str::to_string)
                 .ok_or_else(|| anyhow!("[workspace.metadata.bk.package] {key} is missing"))
         };
+        let strings = |a: &toml_edit::Array| -> Vec<String> {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        };
         let list = |key: &str, required: bool| -> Result<Vec<String>> {
             match table.get(key).and_then(Item::as_array) {
-                Some(a) => Ok(a
-                    .iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect()),
+                Some(a) => Ok(strings(a)),
                 None if required => bail!("[workspace.metadata.bk.package] {key} is missing"),
                 None => Ok(Vec::new()),
             }
@@ -98,7 +100,11 @@ impl Workspace {
             desktop: string("desktop")?.into(),
             icon: string("icon")?.into(),
             extra_files: list("extra-files", false)?,
-            system_deps_apt: list("system-deps-apt", false)?,
+            system_deps_apt: table
+                .get("system-deps")
+                .and_then(|d| d.get("apt"))
+                .and_then(Item::as_array)
+                .map_or_default(strings),
         })
     }
 
@@ -175,7 +181,7 @@ mod tests {
     #[test]
     fn package_meta_reads_all_keys_and_save_keeps_formatting() {
         let t = tempfile::tempdir().unwrap();
-        let body = "[workspace]\n# keep me\n[workspace.metadata.bk.package]\ndisplay-name = \"X\"\nmain-app = \"x\"\napps = [\"x\"]\niss = \"a.iss\"\ndesktop = \"a.desktop\"\nicon = \"a.png\"\nextra-files = [\"LICENSE\"]\nsystem-deps-apt = [\"libfoo\"]\n";
+        let body = "[workspace]\n# keep me\n[workspace.metadata.bk.package]\ndisplay-name = \"X\"\nmain-app = \"x\"\napps = [\"x\"]\niss = \"a.iss\"\ndesktop = \"a.desktop\"\nicon = \"a.png\"\nextra-files = [\"LICENSE\"]\nsystem-deps.apt = [\"libfoo\"]\n";
         ws(t.path(), body);
         let w = Workspace::find(t.path()).unwrap();
         let m = w.package_meta().unwrap();
@@ -183,10 +189,13 @@ mod tests {
         assert_eq!(m.apps, ["x"]);
         assert_eq!(m.icon, PathBuf::from("a.png"));
         assert_eq!(m.system_deps_apt, ["libfoo"]);
+        let mut w = w;
+        w.doc["workspace"]["metadata"]["bk"]["package"]["icon"] = toml_edit::value("b.png");
         w.save().unwrap();
-        assert_eq!(
-            fs::read_to_string(t.path().join("Cargo.toml")).unwrap(),
-            body
-        );
+        let saved = fs::read_to_string(t.path().join("Cargo.toml")).unwrap();
+        assert_eq!(saved, body.replace("a.png", "b.png"));
+        assert!(saved.contains("# keep me"));
+        let pos = |k: &str| saved.find(k).unwrap();
+        assert!(pos("display-name") < pos("main-app") && pos("main-app") < pos("icon"));
     }
 }

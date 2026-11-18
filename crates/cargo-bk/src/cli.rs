@@ -3,10 +3,17 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "cargo-bk", version = env!("BK_VERSION_FULL"), about = "Generate and maintain buildkit-rust products")]
+#[command(
+    name = "cargo-bk",
+    disable_version_flag = true,
+    about = "Generate and maintain buildkit-rust products"
+)]
 pub struct Cli {
+    /// Print the cargo-bk version.
+    #[arg(short = 'V', long)]
+    pub version: bool,
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 #[derive(Subcommand)]

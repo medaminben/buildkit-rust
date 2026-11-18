@@ -69,11 +69,8 @@ fn find_in(dir: &Path, program: &str) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-#[cfg(any(test, feature = "test-support"))]
-#[allow(unused_imports)]
 pub use fake::FakeRunner;
 
-#[cfg(any(test, feature = "test-support"))]
 mod fake {
     use super::{Cmd, Output, Runner};
     use anyhow::{Result, bail};

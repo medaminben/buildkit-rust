@@ -7,13 +7,13 @@ repository.workspace = true
 description = "Generate and maintain products that use buildkit-rust"
 build = "build.rs"
 
+[lib]
+name = "cargo_bk"
+path = "src/lib.rs"
+
 [[bin]]
 name = "cargo-bk"
 path = "src/main.rs"
-
-[features]
-# Exposes FakeRunner to integration tests of later tasks.
-test-support = []
 
 [dependencies]
 anyhow = "1"
