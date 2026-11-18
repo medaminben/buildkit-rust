@@ -134,7 +134,9 @@ jobs:
           set -euo pipefail
           export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
           bash bootstrap/bootstrap.sh --yes | tee "$RUNNER_TEMP/second.log"
-          if grep -E '^==> (Installing|Updating|Adding)' "$RUNNER_TEMP/second.log"; then
+          # Off a tag the bootstrap reinstalls cargo-bk by design; anything else is a failure.
+          if grep -E '^==> (Installing|Updating|Adding)' "$RUNNER_TEMP/second.log" \
+               | grep -vxF '==> Installing cargo-bk from this clone'; then
             echo "::error::the second bootstrap run installed something (lines above)"
             exit 1
           fi
@@ -145,7 +147,11 @@ jobs:
         run: |
           $log = Join-Path $env:RUNNER_TEMP 'second.log'
           .\bootstrap\bootstrap.ps1 -Yes *>&1 | Tee-Object -FilePath $log
-          if (Select-String -Path $log -Pattern '^==> (Installing|Adding)') {
+          # Off a tag the bootstrap reinstalls cargo-bk by design; anything else is a failure.
+          $bad = Select-String -Path $log -Pattern '^==> (Installing|Updating|Adding)' |
+            Where-Object { $_.Line -ne '==> Installing cargo-bk from this clone' }
+          if ($bad) {
+            $bad | ForEach-Object { $_.Line }
             Write-Output '::error::the second bootstrap run installed something (lines above)'
             exit 1
           }
@@ -299,6 +305,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       working-directory: tests/fixtures/foo
+      buildkit-repository: ${{ github.repository }}
       buildkit-ref: ${{ github.sha }}
       package: true
       # The commit lint config belongs to the fixture, not to the pull request's commits.

@@ -15,6 +15,21 @@ const REGENERATE: &str = "regenerate with: rm -rf tests/fixtures/foo && mkdir -p
 && cd tests/fixtures/foo && cargo run --manifest-path ../../../Cargo.toml -p cargo-bk -- new Foo core physics --repo x/foo --no-build \
 --fixed-guid 00000000-0000-4000-8000-000000000000 --fixed-year 2026 --fixed-bk-version 0.0.0";
 
+/// Text files with `\r\n` folded to `\n`: a checkout applies the fixture's own `.gitattributes`
+/// (`*.ps1 text eol=crlf`), while the generator writes `\n`. Binary files stay raw.
+fn normalised(bytes: Vec<u8>) -> Vec<u8> {
+    if bytes.contains(&0) || std::str::from_utf8(&bytes).is_err() {
+        return bytes;
+    }
+    let mut out = Vec::with_capacity(bytes.len());
+    for (i, b) in bytes.iter().enumerate() {
+        if !(*b == b'\r' && bytes.get(i + 1) == Some(&b'\n')) {
+            out.push(*b);
+        }
+    }
+    out
+}
+
 /// Every file under `dir` by relative path, without build output and the lock file that CI
 /// generates after it links the product to the buildkit-rust checkout.
 fn files(dir: &Path) -> BTreeMap<String, Vec<u8>> {
@@ -31,7 +46,7 @@ fn files(dir: &Path) -> BTreeMap<String, Vec<u8>> {
                     walk(root, &path, out);
                 }
             } else if rel != "Cargo.lock" {
-                out.insert(rel, fs::read(&path).unwrap());
+                out.insert(rel, normalised(fs::read(&path).unwrap()));
             }
         }
     }
