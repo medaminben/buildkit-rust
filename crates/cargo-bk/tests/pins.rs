@@ -145,3 +145,41 @@ fn missing_workflows_dir_is_fine() {
     let ws = Workspace::find(t.path()).unwrap();
     assert_eq!(mismatches(&find_pins(&ws).unwrap()).len(), 0);
 }
+
+#[test]
+fn quoted_and_commented_pins() {
+    let t = tempfile::tempdir().unwrap();
+    product(t.path());
+    let u = "medaminben/buildkit-rust/.github/workflows/ci.yml";
+    let ci = t.path().join(".github/workflows/ci.yml");
+    let body = format!(
+        "a:\n    uses: \"{u}@v1.2.3\"\nb:\n    uses: '{u}@v1.2.4'\nc:\n    uses: {u}@v1.2.5 # keep\n  # uses: {u}@v0.0.1\n"
+    );
+    fs::write(&ci, &body).unwrap();
+    let ws = Workspace::find(t.path()).unwrap();
+    let found: Vec<(usize, String)> = find_pins(&ws)
+        .unwrap()
+        .into_iter()
+        .filter_map(|p| match p.site {
+            PinSite::Workflow { line, .. } => Some((line, p.version)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (2, "1.2.3".into()),
+            (4, "1.2.4".into()),
+            (6, "1.2.5".into())
+        ]
+    );
+    let mut ws = ws;
+    upgrade(&mut ws, OWN).unwrap();
+    let after = fs::read_to_string(&ci).unwrap();
+    assert_eq!(
+        after,
+        body.replace("1.2.3", OWN)
+            .replace("1.2.4", OWN)
+            .replace("1.2.5", OWN)
+    );
+}

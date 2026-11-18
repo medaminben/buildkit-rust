@@ -29,16 +29,25 @@ pub struct Pin {
 
 /// Byte range of the version in a `uses: medaminben/buildkit-rust/.github/workflows/x.yml@vX` line.
 fn workflow_version_range(line: &str) -> Option<(usize, usize)> {
+    let trimmed_line = line.trim_start();
+    if trimmed_line.starts_with('#') {
+        return None;
+    }
     let uses = line.find("uses:")?;
-    let rest = &line[uses + "uses:".len()..];
-    let trimmed = rest.trim_start();
-    let body = trimmed.strip_prefix(WORKFLOW_PREFIX)?;
+    let rest = line[uses + "uses:".len()..].trim_start();
+    let rest = rest
+        .strip_prefix('"')
+        .or_else(|| rest.strip_prefix('\''))
+        .unwrap_or(rest);
+    let body = rest.strip_prefix(WORKFLOW_PREFIX)?;
     let at = body.find('@')?;
     if at == 0 {
         return None;
     }
     let after = body[at + 1..].strip_prefix('v')?;
-    let len = after.find(char::is_whitespace).unwrap_or(after.len());
+    let len = after
+        .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ',' | '}' | '#'))
+        .unwrap_or(after.len());
     if len == 0 {
         return None;
     }
@@ -141,6 +150,22 @@ fn write_if_changed(path: &Path, old: &str, new: &str, changed: &mut Vec<PathBuf
     Ok(())
 }
 
+fn set_metadata_version(ws: &mut Workspace, version: &str) -> Result<()> {
+    let Some(Item::Value(old)) = ws
+        .doc
+        .get_mut("workspace")
+        .and_then(|w| w.get_mut("metadata"))
+        .and_then(|m| m.get_mut("buildkit"))
+        .and_then(|b| b.get_mut("version"))
+    else {
+        bail!("[workspace.metadata.buildkit] version is missing");
+    };
+    let mut new = Value::from(version);
+    *new.decor_mut() = old.decor().clone();
+    *old = new;
+    Ok(())
+}
+
 fn set_tag(ws: &mut Workspace, version: &str) {
     let Some(Item::Value(old)) = ws
         .doc
@@ -170,7 +195,7 @@ pub fn upgrade(ws: &mut Workspace, version: &str) -> Result<Vec<PathBuf>> {
     }
     let mut changed = Vec::new();
     let before = ws.doc.to_string();
-    ws.doc["workspace"]["metadata"]["buildkit"]["version"] = toml_edit::value(version);
+    set_metadata_version(ws, version)?;
     set_tag(ws, version);
     let after = ws.doc.to_string();
     if before != after {
