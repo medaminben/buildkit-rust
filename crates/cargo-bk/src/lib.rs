@@ -78,7 +78,11 @@ fn run(cli: &Cli) -> Result<()> {
             let ws = if *machine {
                 None
             } else {
-                Workspace::find(&std::env::current_dir()?).ok()
+                match Workspace::find(&std::env::current_dir()?) {
+                    Ok(ws) => Some(ws),
+                    Err(e) if e.to_string().starts_with("no Cargo workspace found") => None,
+                    Err(e) => return Err(e),
+                }
             };
             commands::doctor::run(ws.as_ref(), &exec::SystemRunner, os::Os::current())
         }

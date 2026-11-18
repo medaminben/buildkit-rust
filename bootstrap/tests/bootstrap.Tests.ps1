@@ -229,6 +229,15 @@ Describe 'bootstrap.ps1' {
             Invoke-Bootstrap -Params @{ Yes = $true } -Script $script:CloneScript -BkVersion '1.0.0' | Out-Null
             $global:Calls | Where-Object { $_ -match '^cargo install --locked --path' } | Should -Not -BeNullOrEmpty
         }
+        It 'still installs when git fails with a message on stderr' {
+            function global:git { Write-Error 'fatal: No names found'; $global:LASTEXITCODE = 128 }
+            try {
+                Invoke-Bootstrap -Params @{ Yes = $true } -Script $script:CloneScript -BkVersion '1.2.3' | Out-Null
+            } finally {
+                Remove-Item function:global:git -ErrorAction SilentlyContinue
+            }
+            $global:Calls | Where-Object { $_ -match '^cargo install --locked --path' } | Should -Not -BeNullOrEmpty
+        }
         It 'always installs when HEAD is not exactly at a tag' {
             git @script:G commit -q --allow-empty -m two
             Invoke-Bootstrap -Params @{ Yes = $true } -Script $script:CloneScript -BkVersion '1.2.3' | Out-Null

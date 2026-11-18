@@ -90,6 +90,11 @@ fn rustc_check(ws: Option<&Workspace>, r: &dyn Runner) -> (Status, String) {
     }
 }
 
+/// The leading `X.Y.Z` of a version, without `-dev`, `-beta.N` or `+N.gSHA` suffixes.
+fn numeric_part(version: &str) -> &str {
+    version.split(['-', '+']).next().unwrap_or(version)
+}
+
 fn cargo_bk_check(ws: Option<&Workspace>, r: &dyn Runner) -> (Status, String) {
     let pin = ws.and_then(Workspace::bk_version);
     let install = pin.as_ref().map_or_else(
@@ -100,7 +105,7 @@ fn cargo_bk_check(ws: Option<&Workspace>, r: &dyn Runner) -> (Status, String) {
         return (Status::Missing, install);
     };
     match pin {
-        Some(want) if want != got => (Status::WrongVersion { want, got }, install),
+        Some(want) if numeric_part(&got) != want => (Status::WrongVersion { want, got }, install),
         _ => (Status::Ok(got), String::new()),
     }
 }

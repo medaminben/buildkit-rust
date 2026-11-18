@@ -219,8 +219,21 @@ function Install-CargoBk {
     # Reinstall unless the installed version equals the clone's exact release tag. A clone that
     # is not exactly at a tag (a branch, or commits after a tag) always reinstalls.
     $want = ''
-    $tag = [string](git -C (Join-Path $PSScriptRoot '..') describe --tags --exact-match --match 'v*' 2>$null | Select-Object -First 1)
-    if ($LASTEXITCODE -eq 0 -and $tag) { $want = $tag.Trim() -replace '^v', '' }
+    # git writes "fatal: No names found" to stderr when there is no tag; under 'Stop' Windows
+    # PowerShell 5.1 would turn that into a terminating error, so run it under 'Continue'.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $tag = ''
+    try {
+        $global:LASTEXITCODE = 0
+        $described = git -C (Join-Path $PSScriptRoot '..') describe --tags --exact-match --match 'v*' 2>$null
+        if ($LASTEXITCODE -eq 0) { $tag = [string]($described | Select-Object -First 1) }
+    } catch {
+        $tag = ''
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    if ($tag) { $want = $tag.Trim() -replace '^v', '' }
     $have = ''
     if (Test-Tool 'cargo' @('bk', '--version')) { $have = ([string](cargo bk --version 2>$null | Select-Object -First 1)).Trim() }
     if ($want -and $have -eq $want) { Say "cargo-bk already installed ($have)"; return }

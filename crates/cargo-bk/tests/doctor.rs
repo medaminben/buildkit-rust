@@ -266,3 +266,33 @@ fn iscc_search_order() {
         "ISCC.exe not found; install Inno Setup (bootstrap group packaging) or set BK_ISCC"
     );
 }
+
+#[test]
+fn cargo_bk_suffix_is_ignored_against_the_pin() {
+    let t = tempfile::tempdir().unwrap();
+    let ws = product(t.path());
+    let r = linux_runner().with_output("cargo-bk", 0, "0.3.0+2.gabc1234\n");
+    let checks = run_checks(Some(&ws), &r, Os::Linux);
+    assert!(matches!(find(&checks, "cargo-bk").status, Status::Ok(_)));
+    let r = linux_runner().with_output("cargo-bk", 0, "0.3.0-dev\n");
+    let checks = run_checks(Some(&ws), &r, Os::Linux);
+    assert!(matches!(find(&checks, "cargo-bk").status, Status::Ok(_)));
+}
+
+#[test]
+fn malformed_manifest_is_reported_not_ignored() {
+    let t = tempfile::tempdir().unwrap();
+    fs::write(
+        t.path().join("Cargo.toml"),
+        "[workspace
+",
+    )
+    .unwrap();
+    assert_cmd::Command::cargo_bin("cargo-bk")
+        .unwrap()
+        .current_dir(t.path())
+        .arg("doctor")
+        .assert()
+        .code(1)
+        .stderr(predicates::str::contains("cannot parse"));
+}
