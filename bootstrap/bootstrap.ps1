@@ -293,8 +293,8 @@ $checks = [ordered]@{
 foreach ($name in $checks.Keys) {
     try {
         $ErrorActionPreference = 'Continue'
-        $v = & $checks[$name] 2>$null | Select-Object -First 1
-        if (-not $v -or $LASTEXITCODE -ne 0) { $v = '-' }
+        $out = @(& $checks[$name] 2>$null)
+        $v = if ($out.Count -and $LASTEXITCODE -eq 0) { [string]$out[0] } else { '-' }
     } catch {
         $v = '-'
     } finally {
@@ -331,3 +331,5 @@ if ($DryRun) {
     & cargo @doctorArgs
     if ($LASTEXITCODE -ne 0) { Warn 'cargo bk doctor found problems; the fix is named next to each one' }
 }
+# Doctor findings are warnings, as in bootstrap.sh; do not hand its exit code to the caller.
+exit 0
