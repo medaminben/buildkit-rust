@@ -29,6 +29,9 @@ It is safe to run again: installed packages and tools are skipped.
 
 The last step is `cargo bk doctor` (`--machine` outside a product). It names the group or command that fixes each missing piece.
 
+The `cargo-binstall` and `appimagetool` downloads are x86_64 builds. On another
+architecture (for example arm64) install them yourself, or leave out the groups that need them.
+
 Only the apt packages need `sudo`. Rust, the cargo tools and `appimagetool` go into your home directory.
 
 ## Options

@@ -38,7 +38,7 @@ system-deps.apt = ["libxkbcommon0", "libvulkan1"]
 | Key | Required | Meaning |
 |---|---|---|
 | `display-name` | yes | The product name as people read it. Spaces become `-` in file names. Its kebab-case form (`My App` gives `my-app`) names the `.deb` package, the `.desktop` file and the icon |
-| `main-app` | yes | The app the AppImage starts (the `AppRun` link) |
+| `main-app` | yes | The app the AppImage starts (the `AppRun` link). The generated `.iss` (`MyAppExe`) and `.desktop` file (`Exec`) name the same app: change all three together |
 | `apps` | yes | The packages of the apps to build and ship |
 | `iss` | yes | The Inno Setup script |
 | `desktop` | yes | The `.desktop` file |

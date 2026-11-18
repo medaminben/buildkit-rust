@@ -50,6 +50,10 @@ to run `cargo bk add-crate` first.
 | `--console` | `Cargo.toml`, `build.rs`, `src/main.rs` | Prints a greeting for its first argument; `--version` prints `<app> <full version>` |
 | `--gui` | `Cargo.toml`, `build.rs`, `src/main.rs`, `src/app.rs` | An eframe window with the version in its title |
 
+The generated code of both apps uses the `Greeting` type of that crate. When you have replaced
+`Greeting` with your own API, edit the new app's `src/main.rs` (and `src/app.rs` for `--gui`)
+before it builds.
+
 The `build.rs` of each app calls `buildkit::emit_version`, so `env!("BK_VERSION_FULL")` works.
 
 `add-app` does not change `apps` in `[workspace.metadata.bk.package]`. An app that should ship
