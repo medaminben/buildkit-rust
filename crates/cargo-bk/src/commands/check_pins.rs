@@ -1,6 +1,6 @@
 //! `cargo bk check-pins`: every buildkit-rust pin must equal the metadata version.
 
-use crate::pins::{PinSite, find_pins, mismatches};
+use crate::pins::{PinSite, find_pins, lint_drift, mismatches};
 use crate::workspace::Workspace;
 use anyhow::{Result, bail};
 
@@ -16,9 +16,15 @@ fn manifest_line(ws: &Workspace, needles: &[&str]) -> usize {
         .unwrap_or(1)
 }
 
+/// Drift warnings go to stderr and never change the result.
+///
 /// # Errors
 /// When a pin differs from the metadata version; the message lists each one.
 pub fn run(ws: &Workspace) -> Result<()> {
+    let github_actions = std::env::var("GITHUB_ACTIONS").is_ok_and(|v| v == "true");
+    for warning in lint_drift(&ws.root, github_actions)? {
+        eprintln!("{warning}");
+    }
     let pins = find_pins(ws)?;
     let Some(expected) = ws.bk_version() else {
         bail!("[workspace.metadata.buildkit] version is missing");

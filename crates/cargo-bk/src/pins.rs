@@ -10,6 +10,14 @@ use toml_edit::{Item, Value};
 
 const WORKFLOW_PREFIX: &str = "medaminben/buildkit-rust/.github/workflows/";
 const LINT_FILES: [&str; 3] = ["rustfmt.toml", "clippy.toml", "deny.toml"];
+/// Plain (unrendered) embedded copies, as paths inside the product and the embedded tree.
+const PLAIN_LINT_FILES: [(&str, &str); 2] = [
+    (
+        "lint/commitlint.config.cjs",
+        "project/lint/commitlint.config.cjs",
+    ),
+    (".editorconfig", "project/.editorconfig"),
+];
 const LINT_HEADER: &str = "# buildkit-rust v";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,6 +150,59 @@ pub fn mismatches(pins: &[Pin]) -> Vec<&Pin> {
         .collect()
 }
 
+/// The embedded copy of a rendered lint file for `version`.
+fn render_lint(name: &str, version: &str) -> Result<String> {
+    let vars = Vars(BTreeMap::from([("bk_version", version.to_string())]));
+    let template = TEMPLATES
+        .get_file(format!("project/{name}.tmpl"))
+        .and_then(|f| f.contents_utf8())
+        .with_context(|| format!("embedded template for {name} is missing"))?;
+    render(template, &vars)
+}
+
+fn embedded_plain(path: &str) -> Result<&'static str> {
+    TEMPLATES
+        .get_file(path)
+        .and_then(|f| f.contents_utf8())
+        .with_context(|| format!("embedded file {path} is missing"))
+}
+
+/// Lint files of the product that differ from the embedded copies of the running
+/// cargo-bk, compared with `\r\n` folded to `\n`. A missing file is not checked.
+/// Each entry is a warning line; `github_actions` adds the annotation prefix.
+///
+/// # Errors
+/// When an embedded copy cannot be rendered or a product file cannot be read.
+pub fn lint_drift(root: &Path, github_actions: bool) -> Result<Vec<String>> {
+    let mut expected = Vec::new();
+    for name in LINT_FILES {
+        expected.push((name, render_lint(name, OWN_VERSION)?));
+    }
+    for (name, embedded) in PLAIN_LINT_FILES {
+        expected.push((name, embedded_plain(embedded)?.to_string()));
+    }
+    let mut warnings = Vec::new();
+    for (name, want) in expected {
+        let file = root.join(name);
+        if !file.is_file() {
+            continue;
+        }
+        let have = std::fs::read_to_string(&file)
+            .with_context(|| format!("cannot read {}", file.display()))?;
+        if have.replace("\r\n", "\n") != want.replace("\r\n", "\n") {
+            let prefix = if github_actions {
+                format!("::warning file={name}::")
+            } else {
+                String::new()
+            };
+            warnings.push(format!(
+                "{prefix}warning: {name} differs from buildkit-rust v{OWN_VERSION}"
+            ));
+        }
+    }
+    Ok(warnings)
+}
+
 fn write_if_changed(path: &Path, old: &str, new: &str, changed: &mut Vec<PathBuf>) -> Result<()> {
     if old != new {
         std::fs::write(path, new).with_context(|| format!("cannot write {}", path.display()))?;
@@ -214,17 +275,12 @@ pub fn upgrade(ws: &mut Workspace, version: &str) -> Result<Vec<PathBuf>> {
             .collect();
         write_if_changed(&file, &old, &new, &mut changed)?;
     }
-    let vars = Vars(BTreeMap::from([("bk_version", version.to_string())]));
     for name in LINT_FILES {
         let file = ws.root.join(name);
         let Ok(old) = std::fs::read_to_string(&file) else {
             continue;
         };
-        let template = TEMPLATES
-            .get_file(format!("project/{name}.tmpl"))
-            .and_then(|f| f.contents_utf8())
-            .with_context(|| format!("embedded template for {name} is missing"))?;
-        let mut new = render(template, &vars)?;
+        let mut new = render_lint(name, version)?;
         if old.contains("\r\n") {
             new = new.replace('\n', "\r\n");
         }

@@ -183,3 +183,90 @@ fn quoted_and_commented_pins() {
             .replace("1.2.5", OWN)
     );
 }
+
+fn crlf(path: &Path) {
+    let text = fs::read_to_string(path).unwrap().replace("\r\n", "\n");
+    fs::write(path, text.replace('\n', "\r\n")).unwrap();
+}
+
+fn stderr(out: &assert_cmd::assert::Assert) -> String {
+    String::from_utf8_lossy(&out.get_output().stderr).into_owned()
+}
+
+#[test]
+fn crlf_lint_copies_give_no_drift_warning() {
+    let t = tempfile::tempdir().unwrap();
+    product(t.path());
+    for f in [
+        "rustfmt.toml",
+        "clippy.toml",
+        "deny.toml",
+        "lint/commitlint.config.cjs",
+        ".editorconfig",
+    ] {
+        assert!(t.path().join(f).exists(), "{f}");
+        crlf(&t.path().join(f));
+    }
+    let out = cargo_bk(t.path(), &["check-pins"]).success();
+    assert!(!stderr(&out).contains("differs"), "{}", stderr(&out));
+}
+
+#[test]
+fn changed_rule_line_warns_and_exits_zero() {
+    let t = tempfile::tempdir().unwrap();
+    product(t.path());
+    let f = t.path().join("clippy.toml");
+    let mut text = fs::read_to_string(&f).unwrap();
+    text.push_str("too-many-lines-threshold = 1\n");
+    fs::write(&f, text).unwrap();
+    let out = cargo_bk(t.path(), &["check-pins"]).success();
+    assert!(
+        stderr(&out).contains(&format!(
+            "warning: clippy.toml differs from buildkit-rust v{OWN}"
+        )),
+        "{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn github_actions_prefixes_the_warning() {
+    let t = tempfile::tempdir().unwrap();
+    product(t.path());
+    fs::write(t.path().join(".editorconfig"), "root = true\n").unwrap();
+    let out = assert_cmd::Command::cargo_bin("cargo-bk")
+        .unwrap()
+        .current_dir(t.path())
+        .env("GITHUB_ACTIONS", "true")
+        .arg("check-pins")
+        .assert()
+        .success();
+    assert!(
+        stderr(&out).contains("::warning file=.editorconfig::"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn missing_lint_copy_is_not_checked() {
+    let t = tempfile::tempdir().unwrap();
+    product(t.path());
+    fs::remove_file(t.path().join("deny.toml")).unwrap();
+    let out = cargo_bk(t.path(), &["check-pins"]).success();
+    assert!(!stderr(&out).contains("deny.toml"));
+}
+
+#[test]
+fn pin_mismatch_with_drift_exits_one_with_both_messages() {
+    let t = tempfile::tempdir().unwrap();
+    product(t.path());
+    fs::write(t.path().join(".editorconfig"), "root = true\n").unwrap();
+    let ci = t.path().join(".github/workflows/ci.yml");
+    let text = fs::read_to_string(&ci).unwrap().replace(OWN, "0.0.1");
+    fs::write(&ci, text).unwrap();
+    let out = cargo_bk(t.path(), &["check-pins"]).failure().code(1);
+    let err = stderr(&out);
+    assert!(err.contains("ci.yml:4: v0.0.1"), "{err}");
+    assert!(err.contains("warning: .editorconfig differs"), "{err}");
+}
