@@ -110,6 +110,55 @@ class ManualTests(unittest.TestCase):
     def test_out_is_required_without_check(self):
         self.assertNotEqual(run_cli("--root", self.root).returncode, 0)
 
+    def add_to_en(self, text):
+        page = self.root / "content" / "en" / "index.md"
+        page.write_text(page.read_text(encoding="utf-8") + text, encoding="utf-8")
+
+    def add_shot(self, lang, name):
+        path = self.root / "assets" / "shots" / lang / f"{name}.png"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(self.root / "assets" / "tiny.png", path)
+
+    def test_shot_resolves_to_language_folder(self):
+        self.add_to_en("\n![Main window](shot:main-window)\n")
+        self.add_shot("en", "main-window")
+        self.assertEqual(self.build().returncode, 0)
+        page = (self.out / "en" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('src="../assets/shots/en/main-window.png"', page)
+        self.assertTrue((self.out / "assets" / "shots" / "en" / "main-window.png").exists())
+        self.assertEqual(run_cli("--root", self.root, "--check").returncode, 0)
+
+    def test_check_missing_shot_message(self):
+        self.add_to_en("\n![Main window](shot:main)\n")
+        r = run_cli("--root", self.root, "--check")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(r.stdout.splitlines(),
+                         ["missing screenshot shot:main (en); run cargo bk manual capture"])
+
+    def test_check_invalid_shot_name_names_the_page(self):
+        self.add_to_en("\n![x](shot:Main_Window)\n")
+        r = run_cli("--root", self.root, "--check")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("en/index.md", r.stdout)
+        self.assertIn("Main_Window", r.stdout)
+
+    def test_shot_in_code_is_ignored(self):
+        self.add_to_en("\n```\n![x](shot:in-fence)\n```\n\nWrite `![x](shot:inline)` like this.\n")
+        self.assertEqual(run_cli("--root", self.root, "--check").returncode, 0)
+        r = run_cli("--root", self.root, "--list-shots")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "")
+        self.assertEqual(self.build().returncode, 0)
+        self.assertNotIn("assets/shots", (self.out / "en" / "index.html").read_text(encoding="utf-8"))
+
+    def test_list_shots_unique_sorted(self):
+        self.add_to_en("\n![b](shot:zeta)\n\n![a](shot:alpha)\n\n![c](shot:alpha)\n")
+        page = self.root / "content" / "ar" / "index.md"
+        page.write_text(page.read_text(encoding="utf-8") + "\n![a](shot:alpha)\n", encoding="utf-8")
+        r = run_cli("--root", self.root, "--list-shots")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.splitlines(), ["ar alpha", "en alpha", "en zeta"])
+
 
 if __name__ == "__main__":
     unittest.main()

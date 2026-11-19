@@ -75,7 +75,9 @@ The manual lives in `docs/manual`. The pages are `docs/manual/content/<lang>/<pa
 | `order` | A number. It sets the order of the pages, and no two pages of a language share one. |
 | `summary` | One sentence about the page. |
 
-The body uses `##` and `###` headings with an optional `{#anchor}`, paragraphs, lists that start with `-` or `1.`, tables, the blocks `::: note`, `::: warning`, `::: formula` and `::: step` closed by `:::`, images written as `![caption](assets/file.png)`, bold, italic and links to other pages such as `[text](page.md#anchor)`. A word between backticks is rendered as a label of the application. A page may not contain an external web address, because the manual has to work offline. Every language needs the same set of pages.
+The body uses `##` and `###` headings with an optional `{#anchor}`, paragraphs, lists that start with `-` or `1.`, tables, the blocks `::: note`, `::: warning`, `::: formula` and `::: step` closed by `:::`, images written as `![caption](assets/file.png)`, screenshots written as `![caption](shot:name)`, bold, italic and links to other pages such as `[text](page.md#anchor)`. A word between backticks is rendered as a label of the application. A page may not contain an external web address, because the manual has to work offline. Every language needs the same set of pages.
+
+A screenshot reference `![caption](shot:name)` names a file in `docs/manual/assets/shots/<lang>/<name>.png`, and the built page links that file. The name uses only the characters `a-z`, `0-9` and `-`. A reference inside a code block or between backticks is ignored. `cargo bk manual --check` fails with `missing screenshot shot:<name> (<lang>); run cargo bk manual capture` when the file does not exist. Until `cargo bk manual capture` ships, put the files there by hand.
 
 ## Setup scripts {#setup}
 

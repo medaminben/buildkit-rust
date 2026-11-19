@@ -12,16 +12,19 @@ Source layout (the --root directory):
 
     build_manual.py --root R --out O [--title T] [--labels L.json]
         writes O/<lang>/<page>.html, O/index.html (language chooser) and O/assets
+    build_manual.py --root R --list-shots
+        prints `<lang> <name>` for each distinct shot: reference, sorted
     build_manual.py --root R --check [--labels L.json]
         writes nothing; prints every problem and exits 1 if there is one:
         a page in one language but not in another, a broken link, anchor or
         image, an external URL, missing front matter, and (with --labels) a
-        `label` that is not in the language's list of the JSON {lang: [labels]}
+        `label` that is not in the language's list of the JSON {lang: [labels]},
+        a shot: name that is not [a-z0-9-]+, a shot: whose PNG is missing
 
 Pages start with front matter (title, order, summary between --- lines).
 Markdown subset: ## / ### headings (optional {#anchor}), paragraphs, - and 1.
 lists, | tables, ::: note / ::: warning / ::: formula / ::: step blocks,
-![caption](assets/x.png) or ![caption](shot:name) (assets/shots/<lang>/name.png),
+![caption](assets/x.png) or ![caption](shot:name) (assets/shots/<lang>/name.png; references inside code are ignored),
 **bold**, *italic*, [text](page#anchor) and `label` for a label of the
 application. Template placeholders: {{lang}} {{dir}} {{title}} {{summary}}
 {{site}} {{manual}} {{contents}} {{language}} {{nav}} {{switcher}} {{body}}
@@ -128,6 +131,9 @@ def inline(text: str) -> str:
 _HEADING = re.compile(r"^(#{2,3})\s+(.*?)(?:\s+\{#([A-Za-z0-9_-]+)\})?\s*$")
 _IMAGE = re.compile(r"^!\[(.*)\]\(([^)\s]+)\)\s*$")
 _OL = re.compile(r"^\d+\.\s+(.*)$")
+_SHOT = re.compile(r"!\[[^\]]*\]\(shot:([^)\s]*)\)")
+_SHOT_NAME = re.compile(r"[a-z0-9-]+")
+_FENCE = ("```", "~~~")
 
 
 class _Renderer:
@@ -169,6 +175,14 @@ class _Renderer:
                     out.append(f'<div class="formula">{rows}</div>')
                 else:
                     out.append(f'<aside class="{html.escape(kind)}">{inner}</aside>')
+                i = j + 1
+                continue
+            if stripped.startswith(_FENCE):
+                j = i + 1
+                while j < len(lines) and not lines[j].strip().startswith(stripped[:3]):
+                    j += 1
+                code = html.escape("\n".join(lines[i + 1:j]), quote=False)
+                out.append(f"<pre><code>{code}</code></pre>")
                 i = j + 1
                 continue
             m = _HEADING.match(stripped)
@@ -226,7 +240,7 @@ class _Renderer:
             i += 1
             while i < len(lines):
                 st = lines[i].strip()
-                if not st or st.startswith((":::", "#", "|", "- ", "![")) or _OL.match(st):
+                if not st or st.startswith((":::", "#", "|", "- ", "![") + _FENCE) or _OL.match(st):
                     break
                 para.append(st)
                 i += 1
@@ -268,6 +282,31 @@ def _pages_for(root: Path, lang: str) -> list[tuple[str, dict[str, str], str]]:
         out.append((path.stem, meta, body))
     out.sort(key=lambda p: int(p[1]["order"]) if p[1].get("order", "").isdigit() else 999)
     return out
+
+
+def shot_refs(body: str) -> list[str]:
+    """The names after `shot:` in a page body, in order, leaving out fenced
+    code blocks and inline code."""
+    names: list[str] = []
+    fence = ""
+    for line in body.splitlines():
+        stripped = line.strip()
+        if fence:
+            if stripped.startswith(fence):
+                fence = ""
+            continue
+        if stripped.startswith(_FENCE):
+            fence = stripped[:3]
+            continue
+        names.extend(_SHOT.findall(re.sub(r"`[^`]*`", "", line)))
+    return names
+
+
+def list_shots(root: Path) -> list[tuple[str, str]]:
+    """Every distinct (lang, name) a page refers to with a valid shot: name."""
+    found = {(lang, name) for lang in languages(root) for _, _, body in _pages_for(root, lang)
+             for name in shot_refs(body) if _SHOT_NAME.fullmatch(name)}
+    return sorted(found)
 
 
 def _fill(template: str, values: dict[str, str]) -> str:
@@ -393,6 +432,18 @@ def check_site(root: Path, pages: dict[str, str], labels: dict[str, set[str]] | 
             if order in seen_orders:
                 problems.append(f"{lang}/{name}.md: order {order} also used by {seen_orders[order]}")
             seen_orders[order] = name
+    shot_files: set[str] = set()
+    for lang in langs:
+        for name in sorted(stems[lang]):
+            _, body = parse_front_matter((root / "content" / lang / f"{name}.md").read_text(encoding="utf-8"))
+            for ref in shot_refs(body):
+                if not _SHOT_NAME.fullmatch(ref):
+                    problems.append(f"{lang}/{name}.md: invalid screenshot name shot:{ref} (use a-z, 0-9 and -)")
+    for lang, ref in list_shots(root):
+        rel_png = f"assets/shots/{lang}/{ref}.png"
+        shot_files.add(rel_png)
+        if not (root / rel_png).is_file():
+            problems.append(f"missing screenshot shot:{ref} ({lang}); run cargo bk manual capture")
     for rel, text in pages.items():
         if "http://" in text or "https://" in text:
             problems.append(f"{rel}: external URL")
@@ -403,6 +454,8 @@ def check_site(root: Path, pages: dict[str, str], labels: dict[str, set[str]] | 
             file_part, _, anchor = target.partition("#")
             dest = posixpath.normpath(posixpath.join(posixpath.dirname(rel), file_part)) if file_part else rel
             default = dest.removeprefix("assets/") in DEFAULT_ASSETS
+            if dest in shot_files:  # reported above, with the capture hint
+                continue
             if dest not in pages and not default and not (dest.startswith("assets/") and (root / dest).is_file()):
                 kind = "missing image" if re.search(r"\.(png|jpe?g|gif|svg|webp)$", target) else "broken link"
                 problems.append(f"{rel}: {kind} {target}")
@@ -446,11 +499,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, help="output directory (required unless --check)")
     parser.add_argument("--title", default=DEFAULT_TITLE, help=f'site title (default: "{DEFAULT_TITLE}")')
     parser.add_argument("--check", action="store_true", help="check only; write nothing")
+    parser.add_argument("--list-shots", action="store_true",
+                        help="print `<lang> <name>` for each distinct shot: reference, then exit")
     parser.add_argument("--labels", type=Path, help='JSON {"lang": ["label", ...]}')
     args = parser.parse_args(argv)
     root = args.root.resolve()
     if not (root / "content").is_dir():
         parser.error(f"{root}/content does not exist")
+    if args.list_shots:
+        for lang, name in list_shots(root):
+            print(f"{lang} {name}")
+        return 0
     if not args.check:
         if args.out is None:
             parser.error("--out is required unless --check is given")

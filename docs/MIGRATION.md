@@ -136,6 +136,8 @@ so that product's manual has generated screenshots.
 - The GUI template gets a capture hook that renders the window offscreen.
 - CI runs the capture on Linux and Windows, and the self-test covers it.
 
-Until it ships, put screenshots into `docs/manual/assets/` by hand.
+The `![caption](shot:name)` reference and its missing-file check in `cargo bk manual --check` already exist; the capture command is the planned part.
+
+Until it ships, put the PNG files into `docs/manual/assets/shots/<lang>/` by hand.
 
 Tracking issue: [#2](https://github.com/medaminben/buildkit-rust/issues/2).
