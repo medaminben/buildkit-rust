@@ -2,7 +2,7 @@
 
 buildkit-rust ships three reusable workflows. A product calls them from short workflow files
 and pins them to a buildkit-rust tag, for example
-`medaminben/buildkit-rust/.github/workflows/ci.yml@v0.1.0`. `cargo bk new` writes these callers.
+`medaminben/buildkit-rust/.github/workflows/ci.yml@v0.2.0`. `cargo bk new` writes these callers.
 The header comment of each workflow in `.github/workflows/` is the reference for its inputs.
 
 The tag in every `uses:` line must equal `[workspace.metadata.buildkit] version` in the product's
@@ -72,7 +72,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   ci:
-    uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v0.1.0
+    uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v0.2.0
     permissions:
       contents: read
     with:
@@ -104,7 +104,7 @@ on:
     - cron: "17 4 * * 1"
 jobs:
   codeql:
-    uses: medaminben/buildkit-rust/.github/workflows/codeql.yml@v0.1.0
+    uses: medaminben/buildkit-rust/.github/workflows/codeql.yml@v0.2.0
     permissions:
       security-events: write
       actions: read
@@ -133,7 +133,7 @@ on:
     branches: [main, Beta]
 jobs:
   release:
-    uses: medaminben/buildkit-rust/.github/workflows/release.yml@v0.1.0
+    uses: medaminben/buildkit-rust/.github/workflows/release.yml@v0.2.0
     permissions:
       contents: write
       actions: write
@@ -160,6 +160,22 @@ again, and the GitHub release is created only if it is missing.
 The bump comes from the label of the merged pull request: `semver:major`, `semver:minor`,
 `semver:patch` (also the default without a label) or `semver:none` (no release).
 `cargo bk repo-setup` creates these labels and `automerge`.
+
+### First release
+
+While the repository has no stable tag, the first release is `0.1.0`, whatever the bump label. To
+start elsewhere, set `first-release` under `[workspace.metadata.buildkit]` in the product's
+`Cargo.toml`:
+
+```toml
+[workspace.metadata.buildkit]
+first-release = "2.0.0"
+```
+
+The first merge into `Beta` then gets `v2.0.0-beta.1` and the first merge into `main` gets
+`v2.0.0`, whatever the bump label (`semver:none` still means no release). Once a stable tag
+exists, the key is ignored. A value that is not `X.Y.Z` without leading zeros fails the release
+job with a message naming the value. `cargo bk new --first-release X.Y.Z` writes the key.
 
 ### Beta and main flow
 

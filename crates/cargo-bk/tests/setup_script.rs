@@ -12,9 +12,11 @@ fn generate(dir: &Path) -> String {
     let mut args = common::new_args(Some("Foo"), &[]);
     args.repo = Some("x/foo".to_string());
     new_project(dir, &args, &FakeRunner::new()).unwrap();
+    // The buildkit pin, read from the same section as setup.sh, not the product's own version.
     let cargo = fs::read_to_string(dir.join("Cargo.toml")).unwrap();
     let line = cargo
         .lines()
+        .skip_while(|l| *l != "[workspace.metadata.buildkit]")
         .find(|l| l.starts_with("version = \""))
         .unwrap();
     line.split('"').nth(1).unwrap().to_string()

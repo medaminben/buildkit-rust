@@ -378,3 +378,153 @@ fn release_and_installer_callers_are_generated() {
     assert!(installer.contains("cargo bk package --format all"));
     assert!(installer.contains("gh release upload \"$TAG\" build/dist/* --clobber"));
 }
+
+#[test]
+fn first_release_sets_the_key_and_the_fallback_version() {
+    let t = tempfile::tempdir().unwrap();
+    let mut a = args(Some("Foo"), &[]);
+    a.first_release = Some("v2.0.0".into());
+    a.fixed_bk_version = Some("0.2.0".into());
+    new_project(t.path(), &a, &FakeRunner::new()).unwrap();
+    let text = fs::read_to_string(t.path().join("Cargo.toml")).unwrap();
+    let doc: toml_edit::DocumentMut = text.parse().unwrap();
+    assert_eq!(
+        doc["workspace"]["package"]["version"].as_str(),
+        Some("2.0.0")
+    );
+    assert_eq!(
+        doc["workspace"]["metadata"]["buildkit"]["first-release"].as_str(),
+        Some("2.0.0")
+    );
+    let keys: Vec<&str> = doc["workspace"]["metadata"]["buildkit"]
+        .as_table()
+        .unwrap()
+        .iter()
+        .map(|(k, _)| k)
+        .collect();
+    assert_eq!(keys, ["version", "first-release", "flow", "repo"], "{text}");
+}
+
+#[test]
+fn without_first_release_nothing_changes() {
+    let t = tempfile::tempdir().unwrap();
+    new_project(t.path(), &args(Some("Foo"), &[]), &FakeRunner::new()).unwrap();
+    let text = fs::read_to_string(t.path().join("Cargo.toml")).unwrap();
+    assert!(!text.contains("first-release"));
+    assert!(text.contains("version = \"0.1.0\""));
+}
+
+#[test]
+fn malformed_first_release_is_refused_before_writing() {
+    for bad in ["2.0", "02.0.0", "2.0.0-beta.1", "x"] {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().join("foo");
+        std::fs::create_dir(&dir).unwrap();
+        let mut a = args(Some("Foo"), &[]);
+        a.first_release = Some(bad.into());
+        a.fixed_bk_version = Some("0.2.0".into());
+        let e = new_project(&dir, &a, &FakeRunner::new())
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains(bad) && e.contains("X.Y.Z"), "{bad}: {e}");
+        assert!(!dir.join("Cargo.toml").exists());
+    }
+}
+
+#[test]
+fn first_release_needs_buildkit_0_2_0() {
+    let t = tempfile::tempdir().unwrap();
+    let dir = t.path().join("foo");
+    std::fs::create_dir(&dir).unwrap();
+    let mut a = args(Some("Foo"), &[]);
+    a.first_release = Some("2.0.0".into());
+    a.fixed_bk_version = Some("0.1.0".into());
+    let e = new_project(&dir, &a, &FakeRunner::new())
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("0.2.0") && e.contains("v0.1.0"), "{e}");
+    assert!(!dir.join("Cargo.toml").exists());
+    a.fixed_bk_version = Some("0.2.0".into());
+    new_project(&dir, &a, &FakeRunner::new()).unwrap();
+    assert!(dir.join("Cargo.toml").exists());
+}
+
+#[test]
+fn first_release_rerun_same_value_is_a_noop_and_other_value_is_refused() {
+    let t = tempfile::tempdir().unwrap();
+    let mut a = args(Some("Foo"), &[]);
+    a.first_release = Some("2.0.0".into());
+    a.fixed_bk_version = Some("0.2.0".into());
+    new_project(t.path(), &a, &FakeRunner::new()).unwrap();
+    let before = fs::read_to_string(t.path().join("Cargo.toml")).unwrap();
+    new_project(t.path(), &a, &FakeRunner::new()).unwrap();
+    assert_eq!(
+        before,
+        fs::read_to_string(t.path().join("Cargo.toml")).unwrap()
+    );
+    a.first_release = Some("3.0.0".into());
+    let e = new_project(t.path(), &a, &FakeRunner::new())
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("3.0.0") && e.contains("2.0.0"), "{e}");
+    assert_eq!(
+        before,
+        fs::read_to_string(t.path().join("Cargo.toml")).unwrap()
+    );
+}
+
+#[test]
+fn first_release_on_an_existing_product_without_the_key_matches_a_first_run() {
+    let mut with_flag = args(Some("Foo"), &[]);
+    with_flag.first_release = Some("2.0.0".into());
+    with_flag.fixed_bk_version = Some("0.2.0".into());
+    let fresh = tempfile::tempdir().unwrap();
+    new_project(fresh.path(), &with_flag, &FakeRunner::new()).unwrap();
+    let expected = fs::read_to_string(fresh.path().join("Cargo.toml")).unwrap();
+
+    let t = tempfile::tempdir().unwrap();
+    let mut a = args(Some("Foo"), &[]);
+    a.fixed_bk_version = Some("0.2.0".into());
+    new_project(t.path(), &a, &FakeRunner::new()).unwrap();
+    assert!(
+        !fs::read_to_string(t.path().join("Cargo.toml"))
+            .unwrap()
+            .contains("first-release")
+    );
+    a.first_release = Some("2.0.0".into());
+    new_project(t.path(), &a, &FakeRunner::new()).unwrap();
+
+    let text = fs::read_to_string(t.path().join("Cargo.toml")).unwrap();
+    let doc: toml_edit::DocumentMut = text.parse().unwrap();
+    assert_eq!(
+        doc["workspace"]["metadata"]["buildkit"]["first-release"].as_str(),
+        Some("2.0.0"),
+        "{text}"
+    );
+    assert_eq!(
+        doc["workspace"]["package"]["version"].as_str(),
+        Some("2.0.0"),
+        "{text}"
+    );
+    assert_eq!(text, expected);
+}
+
+#[test]
+fn first_release_on_a_product_with_no_buildkit_table_does_not_panic() {
+    let t = tempfile::tempdir().unwrap();
+    let dir = t.path().join("foo");
+    fs::create_dir(&dir).unwrap();
+    // `is_product` only looks for the marker text, so a commented-out table gets this far.
+    fs::write(
+        dir.join("Cargo.toml"),
+        "[workspace]\nmembers = []\n# [workspace.metadata.buildkit]\n",
+    )
+    .unwrap();
+    let mut a = args(Some("Foo"), &[]);
+    a.first_release = Some("2.0.0".into());
+    a.fixed_bk_version = Some("0.2.0".into());
+    let e = new_project(&dir, &a, &FakeRunner::new())
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("[workspace.metadata.buildkit]"), "{e}");
+}

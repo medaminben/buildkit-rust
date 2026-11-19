@@ -100,6 +100,29 @@ class NextVersionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             next_version("1.5.4", [], "Beta", latest_beta="1.6.0")
 
+    def test_first_release_replaces_initial_version_on_main(self):
+        tag = next_version(None, ["semver:patch"], "main", first_release="2.0.0")
+        self.assertEqual(tag, "2.0.0")
+
+    def test_first_release_starts_beta_series(self):
+        self.assertEqual(next_version(None, [], "Beta", first_release="2.0.0"), "2.0.0-beta.1")
+
+    def test_first_release_ignored_once_a_stable_tag_exists(self):
+        self.assertEqual(next_version("2.0.0", [], "main", first_release="5.0.0"), "2.0.1")
+
+    def test_first_release_with_none_label_releases_nothing(self):
+        self.assertIsNone(next_version(None, ["semver:none"], "main", first_release="2.0.0"))
+
+    def test_malformed_first_release_is_an_error(self):
+        for bad in ("2.0", "v2.0.0", "02.0.0", "2.0.0-beta.1"):
+            with self.assertRaises(ValueError) as ctx:
+                next_version(None, [], "main", first_release=bad)
+            self.assertIn(bad, str(ctx.exception))
+
+    def test_malformed_first_release_is_an_error_with_a_stable_tag(self):
+        with self.assertRaises(ValueError):
+            next_version("1.0.0", [], "main", first_release="2.0")
+
 
 class CliTests(unittest.TestCase):
     def test_bump_prints_tag(self):
@@ -145,6 +168,15 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, "")
         self.assertTrue(result.stderr.strip())
+
+    def test_cli_first_release(self):
+        out = run_cli("--branch", "main", "--first-release", "2.0.0")
+        self.assertEqual((out.returncode, out.stdout.strip()), (0, "v2.0.0"))
+
+    def test_cli_malformed_first_release_exits_2(self):
+        out = run_cli("--branch", "main", "--first-release", "2.0")
+        self.assertEqual(out.returncode, 2)
+        self.assertIn("2.0", out.stderr)
 
 
 if __name__ == "__main__":

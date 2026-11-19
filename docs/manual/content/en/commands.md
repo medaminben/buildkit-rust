@@ -29,7 +29,7 @@ Every command exits with 0 on success and 1 on failure. The failure message goes
 
 ## new {#new}
 
-`cargo bk new [NAME] [CRATE...] [--repo owner/repo] [--flow direct or beta] [--no-build]`
+`cargo bk new [NAME] [CRATE...] [--repo owner/repo] [--flow direct or beta] [--first-release X.Y.Z] [--no-build]`
 
 Creates a product in the current folder. The folder must be empty, hold only a `.git` folder, or already be a product that `new` made. Existing files are never overwritten, so running the command again is safe. It prints `created <n> files, kept <m>` at the end.
 
@@ -39,6 +39,7 @@ Creates a product in the current folder. The folder must be empty, hold only a `
 | `CRATE...` | Names of the library crates. Default: one crate named `core`. |
 | `--repo owner/repo` | The GitHub repository. It also writes `LICENSE` (MIT, with the owner as holder), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` and the issue and pull request templates, and it is stored as `repo` in the settings. |
 | `--flow direct` or `--flow beta` | How changes reach `main`. `direct` (default): feature branches merge into `main`. `beta`: they merge into `Beta`, which is promoted to `main`. Stored as `flow` in the settings. |
+| `--first-release X.Y.Z` | The version of the first release, for a product that continues an older line. A leading `v` is accepted and dropped. It writes `first-release` under `[workspace.metadata.buildkit]` and sets `[workspace.package] version` to it. While the repository has no stable tag, the release job starts at this version instead of `0.1.0`; once a stable tag exists the key is ignored. Default: `0.1.0`, and nothing is written. Anything but `X.Y.Z` is refused before any file is written. |
 | `--no-build` | Skip the first `cargo build`, `cargo test` and `cargo run` of the console app. |
 
 It writes the workspace `Cargo.toml` with the settings and the lint levels, `rust-toolchain.toml`, `.cargo/config.toml`, the lint files, `.gitignore`, one library per crate, a console app and a GUI app, the Inno Setup script, the `.desktop` file and the icon, the setup scripts, the four workflow callers, the VS Code files, the commit hooks, a README, an architecture page and a user manual.

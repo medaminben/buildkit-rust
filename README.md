@@ -34,7 +34,7 @@ missing; the bootstrap exits 0 even when doctor reports a problem.
 Linux (Debian or Ubuntu; run `sudo apt-get install git` first if git is missing):
 
 ```bash
-git clone --branch v0.1.0 https://github.com/medaminben/buildkit-rust.git ~/dev/buildkit-rust
+git clone --branch v0.2.0 https://github.com/medaminben/buildkit-rust.git ~/dev/buildkit-rust
 ~/dev/buildkit-rust/bootstrap/bootstrap.sh
 mkdir ~/dev/MyApp && cd ~/dev/MyApp
 cargo bk new --repo owner/MyApp MyApp
@@ -43,7 +43,7 @@ cargo bk new --repo owner/MyApp MyApp
 Windows (PowerShell; run `winget install Git.Git` first if git is missing):
 
 ```powershell
-git clone --branch v0.1.0 https://github.com/medaminben/buildkit-rust.git $HOME\dev\buildkit-rust
+git clone --branch v0.2.0 https://github.com/medaminben/buildkit-rust.git $HOME\dev\buildkit-rust
 powershell -ExecutionPolicy Bypass -File $HOME\dev\buildkit-rust\bootstrap\bootstrap.ps1
 mkdir $HOME\dev\MyApp; cd $HOME\dev\MyApp
 cargo bk new --repo owner/MyApp MyApp
@@ -60,6 +60,7 @@ groups it installs are in [bootstrap/README.md](bootstrap/README.md).
 | `CRATE...` | Library crates after the name; default: `core` |
 | `--repo <owner/repo>` | Public product on GitHub: also writes `LICENSE` (MIT), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` and the issue and PR templates |
 | `--flow direct\|beta` | Branch flow, default `direct`: feature branches merge into `main`. With `beta` they merge into `Beta`, which is promoted to `main` |
+| `--first-release <X.Y.Z>` | Version of the first release, default `0.1.0`. Written as `first-release` and as the workspace version. Needs buildkit-rust 0.2.0 or later |
 | `--no-build` | Skip the first build, test and run |
 
 Existing files are never overwritten, so running the command again is safe. It writes the
@@ -92,7 +93,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 ### Only the command
 
 ```bash
-cargo install --git https://github.com/medaminben/buildkit-rust --tag v0.1.0 cargo-bk --locked
+cargo install --git https://github.com/medaminben/buildkit-rust --tag v0.2.0 cargo-bk --locked
 ```
 
 This installs `cargo-bk` and nothing else; the bootstrap installs the rest.

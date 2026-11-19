@@ -422,3 +422,28 @@ fn rewritten_product_builds_against_the_local_crate() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+#[test]
+fn missing_dependency_tables_are_not_inserted() {
+    let tmp = tempfile::tempdir().unwrap();
+    let checkout = tmp.path().join("buildkit-rust");
+    fs::create_dir_all(checkout.join("crates/buildkit")).unwrap();
+    fs::write(checkout.join("crates/buildkit/Cargo.toml"), "[package]\n").unwrap();
+    let dir = tmp.path().join("prod");
+    fs::create_dir_all(&dir).unwrap();
+    let manifest =
+        "[workspace]\nmembers = []\n[workspace.metadata.buildkit]\nversion = \"0.3.1\"\n";
+    fs::write(dir.join("Cargo.toml"), manifest).unwrap();
+    let mut ws = Workspace::find(&dir).unwrap();
+    let want = "buildkit dependency is missing from [workspace.dependencies]";
+    let e = rewrite_dep(&mut ws, &checkout).unwrap_err().to_string();
+    assert_eq!(e, want);
+    assert_eq!(ws.doc.to_string(), manifest);
+    let e = restore_dep(&mut ws).unwrap_err().to_string();
+    assert_eq!(e, want);
+    assert_eq!(ws.doc.to_string(), manifest);
+    assert_eq!(
+        fs::read_to_string(dir.join("Cargo.toml")).unwrap(),
+        manifest
+    );
+}

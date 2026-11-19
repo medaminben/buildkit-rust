@@ -19,6 +19,10 @@ into main releases the base X.Y.Z of the highest beta tag reachable from the
 merge commit that is greater than the latest stable. Without such a beta (a
 squash merge makes the betas unreachable), or with semver:none, the normal
 label rules apply.
+
+First release: with --first-release X.Y.Z and no stable tag, the first release
+(and the first beta series) uses X.Y.Z instead of 0.1.0. It is ignored once a
+stable tag exists.
 """
 
 import argparse
@@ -72,7 +76,8 @@ def existing_tag(repo: str, base_branch: str, sha: str) -> str | None:
     return _highest(_tags(repo, "--points-at", sha), key)
 
 
-def plan_tag(repo, labels, base_branch, head_branch, sha, from_fork=False) -> str | None:
+def plan_tag(repo, labels, base_branch, head_branch, sha, from_fork=False,
+             first_release=None) -> str | None:
     """Return the next tag, or None for no release.
 
     A tag of the planned kind that already points at sha is returned as it is
@@ -86,7 +91,8 @@ def plan_tag(repo, labels, base_branch, head_branch, sha, from_fork=False) -> st
         return already
     stable = latest_stable(repo)
     stable_arg = stable[1:] if stable else None
-    normal = next_version(stable_arg, labels, "main")  # validates the labels too
+    # This call validates the labels too.
+    normal = next_version(stable_arg, labels, "main", None, first_release)
     if normal is None:
         return None
 
@@ -107,7 +113,7 @@ def plan_tag(repo, labels, base_branch, head_branch, sha, from_fork=False) -> st
         # Continue the open beta series.
         latest = max((_beta_key(t), t) for t in open_series if _beta_key(t)[:3] == series)[1]
         return "v%d.%d.%d-beta.%d" % (*series, _beta_key(latest)[3] + 1)
-    result = next_version(stable_arg, labels, "Beta", None)
+    result = next_version(stable_arg, labels, "Beta", None, first_release)
     return f"v{result}"
 
 
@@ -134,12 +140,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--head", default="")
     parser.add_argument("--from-fork", action="store_true",
                         help="the PR head is in another repository: never a promotion")
+    parser.add_argument("--first-release", default="",
+                        help="version of the first release, X.Y.Z (default 0.1.0)")
     parser.add_argument("--sha", required=True)
     parser.add_argument("--notes-file")
     args = parser.parse_args(argv)
     labels = [x.strip() for x in args.labels.split(",") if x.strip()]
     try:
-        tag = plan_tag(args.repo, labels, args.base, args.head, args.sha, args.from_fork)
+        tag = plan_tag(args.repo, labels, args.base, args.head, args.sha, args.from_fork,
+                        args.first_release or None)
         if tag and args.notes_file:
             with open(args.notes_file, "w", encoding="utf-8") as handle:
                 handle.write(notes(args.repo, args.base, args.sha))

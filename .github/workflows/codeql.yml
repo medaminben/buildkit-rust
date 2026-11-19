@@ -9,7 +9,7 @@
 #       - cron: "17 4 * * 1"
 #   jobs:
 #     codeql:
-#       uses: medaminben/buildkit-rust/.github/workflows/codeql.yml@v0.1.0
+#       uses: medaminben/buildkit-rust/.github/workflows/codeql.yml@v0.2.0
 #       permissions:
 #         security-events: write
 #         actions: read

@@ -19,6 +19,7 @@ pub fn new_args(name: Option<&str>, crates: &[&str]) -> NewArgs {
         fixed_guid: None,
         fixed_year: None,
         fixed_bk_version: None,
+        first_release: None,
     }
 }
 
