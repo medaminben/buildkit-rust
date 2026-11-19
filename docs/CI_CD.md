@@ -49,6 +49,7 @@ that has no tag yet. It is the counterpart of exporting `BUILDKIT_DIR` in buildk
 | `coverage` | `false` | Run `cargo llvm-cov` and upload the lcov report |
 | `miri-crates` | empty | Package names, separated by spaces or commas, that `cargo +nightly miri test` runs on. Empty: no `miri` job |
 | `package` | `false` | Run `cargo bk package` on both systems and upload the installers |
+| `manual-capture` | `false` | Run `cargo bk manual capture`, then `cargo bk manual --check`, on both systems. See [Manual capture](#manual-capture) |
 | `buildkit-repository` | `medaminben/buildkit-rust` | Repository that provides `cargo-bk` |
 | `buildkit-ref` | empty | Tag, branch or SHA of buildkit-rust. Empty: the product's own pin. Set: see above |
 | `working-directory` | `.` | Folder of the product inside the repository. The self-test uses it for the committed fixture product |
@@ -80,12 +81,38 @@ jobs:
       coverage: true
       miri-crates: "myapp-core"
       package: true
+      manual-capture: true
       xvfb: true
       format-exclude: "vendor/**"
 ```
 
 Concurrency is set by the caller, not by the reusable workflow. The generated caller lists
 `main` and `Beta` as push branches for `--flow beta` and only `main` for `--flow direct`.
+
+### Manual capture
+
+With `manual-capture: true` the job `manual-capture` runs on `ubuntu-latest` and
+`windows-latest`. It installs `cargo-bk` and runs `cargo bk manual capture`, which starts the
+product once per `![caption](shot:name)` of the manual with the command from
+`[workspace.metadata.buildkit.capture]`, and then `cargo bk manual --check`. The screenshots are
+uploaded as the artifact `manual-shots-<os>`. The job does not commit them.
+
+| System | How the window gets a GPU |
+|---|---|
+| Linux | `xvfb-run -a -s "-screen 0 1920x1080x24"` and Mesa's software Vulkan (`mesa-vulkan-drivers`, the driver lavapipe), with `WGPU_BACKEND=vulkan`. The packages `xvfb`, `mesa-vulkan-drivers` and `libvulkan1` are installed in addition to the build packages |
+| Windows | WARP, the software adapter of DirectX 12, with `WGPU_BACKEND=dx12` |
+
+On a runner without a GPU wgpu takes the software adapter because it is the only one. Do not
+rely on `WGPU_FORCE_FALLBACK_ADAPTER`: the `egui-wgpu` that eframe 0.37 uses does not read it.
+The window is 1280 by 800 at scale factor 1, so the PNGs have the same size on both systems.
+A product that is not wgpu based sets its own capture command and may need other variables.
+
+A product opts in once it has a GUI app that follows the capture contract: `--screen=<name>`
+and `--capture=<path>`, at least 10 frames drawn, one screenshot written as PNG to a temporary
+file that is renamed to the path, exit 0, and on failure `capture failed: <reason>` and exit 1.
+The GUI template of `cargo bk new` already does, with the one screen `main`. The self-test job
+`capture-product` generates such a product, adds `![The main window](shot:main)` to its manual and
+runs the same commands on both systems; the fixture product's CI runs the job without a shot.
 
 ## `codeql.yml`
 

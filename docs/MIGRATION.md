@@ -88,7 +88,7 @@ why it was dropped on purpose.
 |---|---|
 | `tools/release/next_version.py`, `plan_release.py` and their tests | Copied into `tools/release/`, used by `release.yml`; they also take `first-release` |
 | `tools/manual/build_manual.py`, `template.html`, `manual.css`, `manual.js` and tests | Copied into `tools/manual/` and embedded in `cargo-bk` |
-| `tools/manual/capture.sh` | **Planned (deferred, required).** Not in the first release. See [Deferred](#deferred-planned-required) |
+| `tools/manual/capture.sh` | `cargo bk manual capture`, with a capture hook in the GUI template and a `manual-capture` CI job. See [Manual screenshot capture](#manual-screenshot-capture) |
 | `tests/release_pins/check_pins.py` | `cargo bk check-pins`, in the `lint` job. It also checks the lint file copies, and buildkit-rust runs it on its own docs |
 
 ### Lint
@@ -125,19 +125,16 @@ pinned tag is a warning in CI.
 | `docs/MIGRATION.md` (unitpro to buildkit) | This file. The unitpro layout does not exist in buildkit-rust |
 | `docs/CONTRIBUTING.md` | `CONTRIBUTING.md` of this repository, and a generated one for every product with `--repo` |
 
-## Deferred (planned, required)
+## Manual screenshot capture
 
-Manual screenshot capture, buildkit's `tools/manual/capture.sh`, is deferred, not dropped. It is
-required and will ship before the first public release of the first product with an egui GUI,
-so that product's manual has generated screenshots.
+Manual screenshot capture, buildkit's `tools/manual/capture.sh`, shipped in 0.3.0.
 
 - `cargo bk manual capture` runs the product's capture command headless and writes
   `docs/manual/assets/shots/<lang>/<name>.png`, which `![caption](shot:name)` in a page refers to.
-- The GUI template gets a capture hook that renders the window offscreen.
-- CI runs the capture on Linux and Windows, and the self-test covers it.
-
-The `![caption](shot:name)` reference and its missing-file check in `cargo bk manual --check` already exist; the capture command is the planned part.
-
-Until it ships, put the PNG files into `docs/manual/assets/shots/<lang>/` by hand.
-
-Tracking issue: [#2](https://github.com/medaminben/buildkit-rust/issues/2).
+  `cargo bk manual --check` fails when such a file is missing.
+- The GUI template has a capture hook: `--screen=main --capture=<path>` opens the window at
+  1280 by 800, takes one screenshot, writes the PNG and exits. A generated product has the
+  `[workspace.metadata.buildkit.capture]` command for its GUI app.
+- The reusable `ci.yml` has an opt-in `manual-capture` input. It runs the capture and
+  `cargo bk manual --check` on Linux (xvfb and Mesa's software Vulkan) and on Windows (WARP). The
+  self-test covers it with the GUI template. See [CI_CD.md](CI_CD.md#manual-capture).
