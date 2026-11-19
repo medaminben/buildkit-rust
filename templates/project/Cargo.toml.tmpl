@@ -13,6 +13,11 @@ version = "{{bk_version}}"
 flow = "{{flow}}"
 repo = "{{repo}}"
 
+# `cargo bk manual capture` appends --screen=<name> and --capture=<absolute path>.
+[workspace.metadata.buildkit.capture]
+command = ["cargo", "run", "--quiet", "-p", "{{kebab}}-gui", "--"]
+build = ["cargo", "build", "-p", "{{kebab}}-gui"]
+
 [workspace.metadata.bk.package]
 display-name = "{{name}}"
 main-app = "{{kebab}}-gui"

@@ -312,6 +312,59 @@ fn generated_product_builds_and_reports_its_version() {
     assert_eq!(version, "0.1.0-dev");
 }
 
+/// The GUI template's capture contract with the real app: an unknown screen fails with
+/// `capture failed: ...` and exit 1; `--screen=main --capture=<path>` writes a 1280x800 PNG, exits 0
+/// and leaves no temporary file. The second half needs an X11 display (run it under `xvfb-run -a`
+/// where there is none) and a GPU or Mesa's software Vulkan; without `DISPLAY` it is skipped.
+#[test]
+#[ignore = "builds a generated product with a real cargo and opens a window"]
+fn generated_gui_app_captures_its_main_screen() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("foo");
+    new_project(&dir, &args(None, &["core"]), &SystemRunner).unwrap();
+    let mut ws = Workspace::find(&dir).unwrap();
+    rewrite_dep(
+        &mut ws,
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
+    )
+    .unwrap();
+    ws.save().unwrap();
+    let run = |extra: &[&str]| {
+        let mut cmd = Command::new("cargo");
+        cmd.args(["run", "-q", "-p", "foo-gui", "--"])
+            .args(extra)
+            .current_dir(&dir)
+            .env("CARGO_TARGET_DIR", tmp.path().join("target"))
+            .env_remove("WAYLAND_DISPLAY");
+        cmd.output().unwrap()
+    };
+
+    let out = run(&["--screen=lobby", "--capture=unused.png"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr).trim(),
+        "capture failed: unknown screen 'lobby'; use main"
+    );
+
+    if std::env::var_os("DISPLAY").is_none() {
+        eprintln!("skipped: no DISPLAY, so no window to capture");
+        return;
+    }
+    let png = tmp.path().join("main.png");
+    let out = run(&["--screen=main", &format!("--capture={}", png.display())]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let bytes = fs::read(&png).unwrap();
+    assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+    // IHDR: width and height as big-endian u32 at bytes 16 and 20.
+    assert_eq!(bytes[16..20], 1280u32.to_be_bytes());
+    assert_eq!(bytes[20..24], 800u32.to_be_bytes());
+    assert!(!tmp.path().join("main.png.tmp").exists());
+}
+
 #[test]
 fn iss_output_name_matches_the_packager() {
     let t = include_str!("../../../templates/project/installer/__kebab__.iss.tmpl");
@@ -400,6 +453,7 @@ fn first_release_sets_the_key_and_the_fallback_version() {
         .as_table()
         .unwrap()
         .iter()
+        .filter(|(_, v)| !v.is_table())
         .map(|(k, _)| k)
         .collect();
     assert_eq!(keys, ["version", "first-release", "flow", "repo"], "{text}");
