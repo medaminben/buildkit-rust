@@ -99,7 +99,7 @@ uploaded as the artifact `manual-shots-<os>`. The job does not commit them.
 
 | System | How the window gets a GPU |
 |---|---|
-| Linux | `xvfb-run -a -s "-screen 0 1920x1080x24"` and Mesa's software Vulkan (`mesa-vulkan-drivers`, the driver lavapipe), with `WGPU_BACKEND=vulkan`. The packages `xvfb`, `mesa-vulkan-drivers` and `libvulkan1` are installed in addition to the build packages |
+| Linux | `xvfb-run -a -s "-screen 0 1920x1080x24"` and Mesa's software Vulkan (`mesa-vulkan-drivers`, the driver lavapipe), with `WGPU_BACKEND=vulkan`. The packages `xvfb`, `mesa-vulkan-drivers`, `libvulkan1` and `libxkbcommon-x11-0` (which winit loads to open a window on X11) are installed in addition to the build packages |
 | Windows | WARP, the software adapter of DirectX 12, with `WGPU_BACKEND=dx12` |
 
 On a runner without a GPU wgpu takes the software adapter because it is the only one. Do not

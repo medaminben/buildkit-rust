@@ -358,7 +358,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           # shellcheck disable=SC2086
-          sudo apt-get install -y $BUILD_APT xvfb mesa-vulkan-drivers libvulkan1
+          sudo apt-get install -y $BUILD_APT xvfb mesa-vulkan-drivers libvulkan1 libxkbcommon-x11-0
       - name: Install the toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2

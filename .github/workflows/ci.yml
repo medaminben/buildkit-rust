@@ -714,8 +714,9 @@ jobs:
           read -r -a extra <<< "$APT_PACKAGES"
           read -r -a build <<< "$BUILD_APT"
           # xvfb: the X server; mesa-vulkan-drivers: lavapipe, a Vulkan driver on the CPU.
+          # libxkbcommon-x11-0: winit loads it at run time to open a window on X11.
           sudo apt-get update
-          sudo apt-get install -y "${build[@]}" "${extra[@]}" xvfb mesa-vulkan-drivers libvulkan1
+          sudo apt-get install -y "${build[@]}" "${extra[@]}" xvfb mesa-vulkan-drivers libvulkan1 libxkbcommon-x11-0
       - name: Install the toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
