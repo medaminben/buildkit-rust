@@ -10,7 +10,7 @@
 #     cancel-in-progress: true
 #   jobs:
 #     ci:
-#       uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v0.2.0
+#       uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v0.3.0
 #       permissions:
 #         contents: read
 #       with:
@@ -18,6 +18,7 @@
 #         coverage: true
 #         miri-crates: "foo-core"
 #         package: true            # build the installers on every run
+#         manual-capture: true     # take the manual's screenshots on both OSes
 #         xvfb: true               # cargo test under xvfb-run (GUI tests)
 #         timeout-minutes: 45      # per job (a caller job cannot set it)
 #         format-exclude: "vendor/**"
@@ -48,6 +49,13 @@
 #                        cargo +nightly miri test runs on. Empty (default): no miri job.
 #   package              Run cargo bk package on both OSes and upload the installers.
 #                        Proves the installers still build. Default false.
+#   manual-capture       Run cargo bk manual capture and then cargo bk manual --check
+#                        on both OSes, with the product's own capture command
+#                        ([workspace.metadata.buildkit.capture] in Cargo.toml). Linux
+#                        runs under xvfb-run with Mesa's software Vulkan (lavapipe,
+#                        WGPU_BACKEND=vulkan), Windows renders on WARP (WGPU_BACKEND=dx12).
+#                        The screenshots are uploaded as an artifact; the run does not
+#                        commit them. Default false.
 #   buildkit-repository  Repository that provides cargo-bk. Default
 #                        medaminben/buildkit-rust.
 #   buildkit-ref         Tag, branch or SHA of buildkit-rust to use. Empty (default):
@@ -71,6 +79,9 @@
 #   coverage  Optional: cargo llvm-cov, lcov report as artifact.
 #   miri      Optional: cargo +nightly miri test on the crates in miri-crates.
 #   package   Optional: cargo bk package on both OSes, installers as artifacts.
+#   manual-capture
+#             Optional: cargo bk manual capture, then cargo bk manual --check, on
+#             both OSes (xvfb and lavapipe on Linux, WARP on Windows).
 #
 # CodeQL lives in its own workflow, codeql.yml, so that this one does not need
 # security-events: write from the caller.
@@ -129,6 +140,10 @@ on:
         default: ""
       package:
         description: "Run cargo bk package on both OSes and upload the installers"
+        type: boolean
+        default: false
+      manual-capture:
+        description: "Run cargo bk manual capture and cargo bk manual --check on both OSes (xvfb and lavapipe on Linux, WARP on Windows)"
         type: boolean
         default: false
       buildkit-repository:
@@ -653,3 +668,109 @@ jobs:
           name: installers-${{ matrix.os }}
           path: ${{ inputs.working-directory }}/build/dist/*
           if-no-files-found: error
+
+  manual-capture:
+    if: inputs.manual-capture
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve the buildkit-rust ref
+        id: bk
+        env:
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+          APT_INPUT: ${{ inputs.apt-packages }}
+        run: |
+          set -euo pipefail
+          python -I - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, sys, tomllib
+          sys.stdout.reconfigure(newline="\n")
+          with open("Cargo.toml", "rb") as f:
+              ws = tomllib.load(f)["workspace"]["metadata"]
+          ref = os.environ["BUILDKIT_REF"] or "v" + ws["buildkit"]["version"]
+          apt = os.environ["APT_INPUT"] or " ".join(ws.get("bk", {}).get("package", {}).get("system-deps", {}).get("apt", []))
+          print("ref=" + ref)
+          print("apt=" + apt)
+          PY
+      - name: Install system packages
+        if: runner.os == 'Linux'
+        env:
+          APT_PACKAGES: ${{ steps.bk.outputs.apt }}
+        run: |
+          set -euo pipefail
+          read -r -a extra <<< "$APT_PACKAGES"
+          read -r -a build <<< "$BUILD_APT"
+          # xvfb: the X server; mesa-vulkan-drivers: lavapipe, a Vulkan driver on the CPU.
+          # libxkbcommon-x11-0: winit loads it at run time to open a window on X11.
+          sudo apt-get update
+          sudo apt-get install -y "${build[@]}" "${extra[@]}" xvfb mesa-vulkan-drivers libvulkan1 libxkbcommon-x11-0
+      - name: Install the toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "${{ inputs.working-directory }} -> build/target"
+          key: bk-${{ steps.bk.outputs.ref }}
+      - uses: actions/checkout@v4
+        if: inputs.buildkit-ref != ''
+        with:
+          repository: ${{ inputs.buildkit-repository }}
+          ref: ${{ inputs.buildkit-ref }}
+          path: .buildkit-rust
+          fetch-depth: 0
+      - name: Move the buildkit-rust checkout out of the product workspace
+        if: inputs.buildkit-ref != ''
+        run: mv "$GITHUB_WORKSPACE/.buildkit-rust" "$RUNNER_TEMP/buildkit-rust"
+      - name: Install cargo-bk
+        env:
+          REPO: ${{ inputs.buildkit-repository }}
+          REF: ${{ steps.bk.outputs.ref }}
+          BUILDKIT_REF: ${{ inputs.buildkit-ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BUILDKIT_REF" ]; then
+            cargo install --path "$RUNNER_TEMP/buildkit-rust/crates/cargo-bk" --locked --force
+          else
+            cargo install --git "https://github.com/$REPO" --tag "$REF" cargo-bk --locked
+          fi
+      - name: Link the product to the buildkit-rust checkout
+        if: inputs.buildkit-ref != ''
+        run: |
+          set -euo pipefail
+          cargo bk link --rewrite-dep "$RUNNER_TEMP/buildkit-rust"
+          # Brings Cargo.lock in line with the path dependency.
+          cargo metadata --format-version 1 > /dev/null
+      - name: Capture the manual's screenshots
+        # The adapter: wgpu picks the CPU adapter when the runner has no GPU. Linux gets lavapipe
+        # (Vulkan) behind xvfb, which needs a screen at least as large as the 1280x800 window.
+        # Windows gets WARP, the DX12 software adapter. WGPU_FORCE_FALLBACK_ADAPTER is not read
+        # by egui-wgpu, so the backend is set instead.
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = Linux ]; then
+            export WGPU_BACKEND=vulkan
+            xvfb-run -a -s "-screen 0 1920x1080x24" cargo bk manual capture
+          else
+            export WGPU_BACKEND=dx12
+            cargo bk manual capture
+          fi
+      - name: Manual check
+        run: cargo bk manual --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: manual-shots-${{ matrix.os }}
+          path: ${{ inputs.working-directory }}/docs/manual/assets/shots
+          if-no-files-found: ignore

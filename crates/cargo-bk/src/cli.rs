@@ -42,6 +42,8 @@ pub enum Command {
         /// Check links and content; write nothing.
         #[arg(long)]
         check: bool,
+        #[command(subcommand)]
+        action: Option<ManualAction>,
     },
     /// Check the toolchain and the product.
     Doctor {
@@ -81,5 +83,25 @@ pub enum Command {
         /// Required check names, separated by commas; replaces the defaults.
         #[arg(long, value_delimiter = ',', value_name = "NAME,...")]
         checks: Option<Vec<String>>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ManualAction {
+    /// Run the product's capture command once per screenshot the manual references.
+    ///
+    /// The command is `[workspace.metadata.buildkit.capture] command` in the root
+    /// Cargo.toml; an optional `build` array there runs once first, without the timeout.
+    /// `--screen=<name>` and `--capture=<absolute path>` are appended.
+    /// Each PNG is written to docs/manual/assets/shots/<lang>/<name>.png for every
+    /// language that references the shot. Every shot is tried; failures are listed
+    /// and the exit code is 1. Exit code 2: no capture command is configured.
+    Capture {
+        /// Capture only this shot; repeat for several.
+        #[arg(long, value_name = "NAME")]
+        only: Vec<String>,
+        /// Seconds to wait for one shot before it is killed.
+        #[arg(long, value_name = "SECONDS", default_value_t = 60)]
+        timeout: u64,
     },
 }

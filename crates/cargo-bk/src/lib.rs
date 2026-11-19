@@ -14,7 +14,7 @@ pub mod workspace;
 
 use anyhow::{Result, bail};
 use clap::Parser;
-use cli::{Cli, Command};
+use cli::{Cli, Command, ManualAction};
 use workspace::Workspace;
 
 /// Runs the CLI with `args` (the program name first) and returns the exit code.
@@ -28,7 +28,13 @@ pub fn main_with(mut args: Vec<String>) -> i32 {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("error: {e:#}");
-            1
+            if e.downcast_ref::<commands::manual::capture::NoConfig>()
+                .is_some()
+            {
+                2
+            } else {
+                1
+            }
         }
     }
 }
@@ -68,7 +74,19 @@ fn run(cli: &Cli) -> Result<()> {
                 &mut std::io::stderr(),
             )?;
         }
-        Some(Command::Manual { check }) => {
+        Some(Command::Manual {
+            action: Some(ManualAction::Capture { only, timeout }),
+            ..
+        }) => {
+            commands::manual::capture::run(
+                &Workspace::find(&cwd)?,
+                &exec::SystemRunner,
+                os::Os::current(),
+                only,
+                std::time::Duration::from_secs(*timeout),
+            )?;
+        }
+        Some(Command::Manual { check, .. }) => {
             commands::manual::run(
                 &Workspace::find(&cwd)?,
                 &exec::SystemRunner,

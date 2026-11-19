@@ -8,6 +8,8 @@ rust-version.workspace = true
 [dependencies]
 {{crate_package}} = { path = "../../crates/{{crate}}" }
 eframe = "0.37"
+# The PNG of a capture run (`--capture`).
+png = { version = "0.18.1", default-features = false }
 
 [build-dependencies]
 buildkit.workspace = true

@@ -335,6 +335,77 @@ jobs:
             ls build/dist/*Setup*.exe
           fi
 
+  capture-product:
+    name: capture on ${{ matrix.os }}
+    needs: scripts
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the system packages (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # shellcheck disable=SC2086
+          sudo apt-get install -y $BUILD_APT xvfb mesa-vulkan-drivers libvulkan1 libxkbcommon-x11-0
+      - name: Install the toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> build/target"
+      - name: Install cargo-bk from this checkout
+        run: cargo install --path crates/cargo-bk --locked --force
+      - name: Generate a GUI product with one screenshot reference
+        run: |
+          set -euo pipefail
+          git config --global user.name "CI Bot"
+          git config --global user.email "ci@example.invalid"
+          git config --global init.defaultBranch main
+          temp="$RUNNER_TEMP"
+          if command -v cygpath >/dev/null; then temp="$(cygpath -m "$RUNNER_TEMP")"; fi
+          mkdir -p "$temp/capture/foo"
+          echo "FOO=$temp/capture/foo" >> "$GITHUB_ENV"
+          cd "$temp/capture/foo"
+          cargo bk new Foo core --repo x/foo --no-build
+          printf '\n![The main window](shot:main)\n' >> docs/manual/content/en/usage.md
+          cargo bk manual --check && { echo "::error::the missing screenshot was not reported"; exit 1; } || true
+          # The pinned tag is not published yet: point the product at this checkout.
+          cargo bk link --rewrite-dep "$GITHUB_WORKSPACE"
+          cargo generate-lockfile
+      - name: cargo bk manual capture, then the check
+        working-directory: ${{ env.FOO }}
+        run: |
+          set -euo pipefail
+          # The commands of the reusable ci.yml's manual-capture job.
+          if [ "$RUNNER_OS" = Linux ]; then
+            export WGPU_BACKEND=vulkan
+            xvfb-run -a -s "-screen 0 1920x1080x24" cargo bk manual capture
+          else
+            export WGPU_BACKEND=dx12
+            cargo bk manual capture
+          fi
+          cargo bk manual --check
+          png=docs/manual/assets/shots/en/main.png
+          [ -s "$png" ] || { echo "::error::no $png"; exit 1; }
+          head -c 8 "$png" | od -An -c | grep -q 'P   N   G' || { echo "::error::$png is not a PNG"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capture-product-${{ matrix.os }}
+          path: ${{ env.FOO }}/docs/manual/assets/shots
+          if-no-files-found: ignore
+
   fixture-ci:
     name: fixture product CI
     permissions:
@@ -345,5 +416,8 @@ jobs:
       buildkit-repository: ${{ github.repository }}
       buildkit-ref: ${{ github.sha }}
       package: true
+      # The fixture has the capture command but no shot reference, so this proves the job's
+      # setup (xvfb, lavapipe, WARP, cargo bk) on both OSes; capture-product takes a real shot.
+      manual-capture: true
       # The commit lint config belongs to the fixture, not to the pull request's commits.
       lint-commits: false

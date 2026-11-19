@@ -10,7 +10,7 @@ Run `cargo bk <command>`. The program is also installed as `cargo-bk`, and `carg
 
 `cargo bk --version` (or `-V`) prints the version of `cargo-bk`. A command that works on a product warns when the product pins another version. See [Troubleshooting](troubleshooting.md#any).
 
-Every command exits with 0 on success and 1 on failure. The failure message goes to the error output.
+Every command exits with 0 on success and 1 on failure; `manual capture` exits 2 when the product has no capture configuration. The failure message goes to the error output.
 
 | Command | Purpose |
 | --- | --- |
@@ -20,6 +20,7 @@ Every command exits with 0 on success and 1 on failure. The failure message goes
 | [version](#version) | Print the product version |
 | [package](#package) | Build the installers |
 | [manual](#manual) | Build or check the user manual |
+| [manual capture](#manual-capture) | Take the manual's screenshots with the product |
 | [doctor](#doctor) | Check the machine and the product |
 | [check-pins](#check-pins) | Check that the version pins agree |
 | [upgrade](#upgrade) | Move the pins to the running version |
@@ -81,6 +82,28 @@ Builds the installers into `build/dist` and prints the path of each file. The de
 `cargo bk manual [--check]`
 
 Renders `docs/manual` into `build/manual`, with one folder per language and a language chooser. It needs Python 3.11 or newer. With `--check` it writes nothing and fails when a page has a problem: a missing front matter key, a page that exists in one language only, a broken link, anchor or image, or an external web address. This command does not need the packaging settings. See [Manual pages](configuration.md#manual-pages).
+
+## manual capture {#manual-capture}
+
+`cargo bk manual capture [--only <name>]... [--timeout <seconds>]`
+
+Runs the product once for each screenshot the manual references with `![caption](shot:name)`. The command comes from the root `Cargo.toml`:
+
+```toml
+[workspace.metadata.buildkit.capture]
+command = ["cargo", "run", "-p", "foo-gui", "--"]
+```
+
+An optional `build = ["cargo", "build", "--release", "--locked", "-p", "foo-gui"]` in the same table runs once before the first shot, without the per-shot timeout and with its output shown, so a slow compile does not use up a shot's time. If it fails, the command stops with `capture build failed` and exits 1.
+
+`cargo bk manual capture` appends `--screen=<name>` and `--capture=<absolute path>` and runs the command once per distinct name from the product root. The product must write a PNG to that path and exit 0. The PNG is placed at `docs/manual/assets/shots/<lang>/<name>.png` for every language that references the name. The product gets a temporary path (`<name>.part.png`, which keeps the `.png` extension for encoders that pick the format by extension) and the file is renamed only after a successful run, so a failed capture never replaces an existing screenshot.
+
+| Option | What it does |
+|---|---|
+| `--only <name>` | Captures this shot only. Repeat it for several |
+| `--timeout <seconds>` | Kills a shot that runs longer. Default 60. The whole process tree is killed, so a game started by `cargo run` ends too |
+
+Every shot is tried. A shot that exits non-zero, times out or writes no file is listed at the end and the command exits 1. Without a capture command it prints `no [workspace.metadata.buildkit.capture] command in Cargo.toml` and exits 2. It needs Python 3.11 or newer to list the shots.
 
 ## doctor {#doctor}
 
