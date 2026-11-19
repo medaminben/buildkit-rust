@@ -83,7 +83,6 @@ Builds the installers into `build/dist` and prints the path of each file. The de
 
 Renders `docs/manual` into `build/manual`, with one folder per language and a language chooser. It needs Python 3.11 or newer. With `--check` it writes nothing and fails when a page has a problem: a missing front matter key, a page that exists in one language only, a broken link, anchor or image, or an external web address. This command does not need the packaging settings. See [Manual pages](configuration.md#manual-pages).
 
-
 ## manual capture {#manual-capture}
 
 `cargo bk manual capture [--only <name>]... [--timeout <seconds>]`
@@ -97,7 +96,7 @@ command = ["cargo", "run", "-p", "foo-gui", "--"]
 
 An optional `build = ["cargo", "build", "--release", "--locked", "-p", "foo-gui"]` in the same table runs once before the first shot, without the per-shot timeout and with its output shown, so a slow compile does not use up a shot's time. If it fails, the command stops with `capture build failed` and exits 1.
 
-`cargo bk manual capture` appends `--screen=<name>` and `--capture=<absolute path>` and runs the command once per distinct name from the product root. The product must write a PNG to that path and exit 0. The PNG is placed at `docs/manual/assets/shots/<lang>/<name>.png` for every language that references the name. The product gets a temporary path (`<name>.part.png`, which keeps the `.png` extension for encoders that pick the format by extension,) and the file is renamed only after a successful run, so a failed capture never replaces an existing screenshot.
+`cargo bk manual capture` appends `--screen=<name>` and `--capture=<absolute path>` and runs the command once per distinct name from the product root. The product must write a PNG to that path and exit 0. The PNG is placed at `docs/manual/assets/shots/<lang>/<name>.png` for every language that references the name. The product gets a temporary path (`<name>.part.png`, which keeps the `.png` extension for encoders that pick the format by extension) and the file is renamed only after a successful run, so a failed capture never replaces an existing screenshot.
 
 | Option | What it does |
 |---|---|
