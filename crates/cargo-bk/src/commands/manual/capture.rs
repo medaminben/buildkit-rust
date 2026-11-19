@@ -28,36 +28,13 @@ impl std::error::Error for NoConfig {}
 
 const NO_COMMAND: &str = "no [workspace.metadata.buildkit.capture] command in Cargo.toml";
 
-fn capture_command(ws: &Workspace) -> Result<Vec<String>> {
-    let item = ["workspace", "metadata", "buildkit", "capture", "command"]
+/// The string array at `[workspace.metadata.buildkit.capture] <key>`: `None` when the key is
+/// absent, a [`NoConfig`] error when it is not a non-empty array of strings.
+fn capture_words(ws: &Workspace, key: &str) -> Result<Option<Vec<String>>> {
+    let item = ["workspace", "metadata", "buildkit", "capture", key]
         .iter()
-        .try_fold(ws.doc.as_item(), |item, key| {
-            item.as_table_like().and_then(|t| t.get(key))
-        });
-    let Some(item) = item else {
-        return Err(NoConfig(NO_COMMAND.to_string()).into());
-    };
-    let words: Option<Vec<String>> = item.as_array().and_then(|a| {
-        a.iter()
-            .map(|v| v.as_str().map(str::to_string))
-            .collect::<Option<Vec<_>>>()
-    });
-    match words {
-        Some(w) if !w.is_empty() => Ok(w),
-        _ => Err(NoConfig(
-            "[workspace.metadata.buildkit.capture] command must be a non-empty array of strings"
-                .to_string(),
-        )
-        .into()),
-    }
-}
-
-/// The optional `build` command; `None` when absent.
-fn build_command(ws: &Workspace) -> Result<Option<Vec<String>>> {
-    let item = ["workspace", "metadata", "buildkit", "capture", "build"]
-        .iter()
-        .try_fold(ws.doc.as_item(), |item, key| {
-            item.as_table_like().and_then(|t| t.get(key))
+        .try_fold(ws.doc.as_item(), |item, k| {
+            item.as_table_like().and_then(|t| t.get(k))
         });
     let Some(item) = item else {
         return Ok(None);
@@ -69,12 +46,19 @@ fn build_command(ws: &Workspace) -> Result<Option<Vec<String>>> {
     });
     match words {
         Some(w) if !w.is_empty() => Ok(Some(w)),
-        _ => Err(NoConfig(
-            "[workspace.metadata.buildkit.capture] build must be a non-empty array of strings"
-                .to_string(),
-        )
+        _ => Err(NoConfig(format!(
+            "[workspace.metadata.buildkit.capture] {key} must be a non-empty array of strings"
+        ))
         .into()),
     }
+}
+
+fn capture_command(ws: &Workspace) -> Result<Vec<String>> {
+    capture_words(ws, "command")?.ok_or_else(|| NoConfig(NO_COMMAND.to_string()).into())
+}
+
+fn build_command(ws: &Workspace) -> Result<Option<Vec<String>>> {
+    capture_words(ws, "build")
 }
 
 /// Runs the build command once, streaming its output, with no timeout.
@@ -218,7 +202,7 @@ pub fn run(
         }
         let target = |lang: &str| -> PathBuf { shots_dir.join(lang).join(format!("{name}.png")) };
         let part =
-            |lang: &str| -> PathBuf { shots_dir.join(lang).join(format!("{name}.png.part")) };
+            |lang: &str| -> PathBuf { shots_dir.join(lang).join(format!("{name}.part.png")) };
         let first = &langs[0];
         let result = (|| -> Result<()> {
             fs::create_dir_all(shots_dir.join(first))?;

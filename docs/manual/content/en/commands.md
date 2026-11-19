@@ -10,7 +10,7 @@ Run `cargo bk <command>`. The program is also installed as `cargo-bk`, and `carg
 
 `cargo bk --version` (or `-V`) prints the version of `cargo-bk`. A command that works on a product warns when the product pins another version. See [Troubleshooting](troubleshooting.md#any).
 
-Every command exits with 0 on success and 1 on failure. The failure message goes to the error output.
+Every command exits with 0 on success and 1 on failure; `manual capture` exits 2 when the product has no capture configuration. The failure message goes to the error output.
 
 | Command | Purpose |
 | --- | --- |
@@ -97,7 +97,7 @@ command = ["cargo", "run", "-p", "foo-gui", "--"]
 
 An optional `build = ["cargo", "build", "--release", "--locked", "-p", "foo-gui"]` in the same table runs once before the first shot, without the per-shot timeout and with its output shown, so a slow compile does not use up a shot's time. If it fails, the command stops with `capture build failed` and exits 1.
 
-`cargo bk manual capture` appends `--screen=<name>` and `--capture=<absolute path>` and runs the command once per distinct name from the product root. The product must write a PNG to that path and exit 0. The PNG is placed at `docs/manual/assets/shots/<lang>/<name>.png` for every language that references the name. The product gets a temporary path (`<name>.png.part`) and the file is renamed only after a successful run, so a failed capture never replaces an existing screenshot.
+`cargo bk manual capture` appends `--screen=<name>` and `--capture=<absolute path>` and runs the command once per distinct name from the product root. The product must write a PNG to that path and exit 0. The PNG is placed at `docs/manual/assets/shots/<lang>/<name>.png` for every language that references the name. The product gets a temporary path (`<name>.part.png`, which keeps the `.png` extension for encoders that pick the format by extension,) and the file is renamed only after a successful run, so a failed capture never replaces an existing screenshot.
 
 | Option | What it does |
 |---|---|

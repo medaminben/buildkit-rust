@@ -122,7 +122,10 @@ fn log_lines(p: &Product) -> Vec<String> {
 fn leftovers(root: &Path) -> Vec<PathBuf> {
     walk(&root.join("docs/manual/assets/shots"))
         .into_iter()
-        .filter(|p| p.extension().is_none_or(|e| e != "png"))
+        .filter(|p| {
+            p.file_name()
+                .is_some_and(|n| n.to_string_lossy().ends_with(".part.png"))
+        })
         .collect()
 }
 
@@ -149,7 +152,7 @@ fn every_shot_runs_once_with_the_screen_and_an_absolute_path() {
     .unwrap();
     assert_eq!(
         log_lines(&p),
-        ["home home.png.part true", "menu menu.png.part true"]
+        ["home home.part.png true", "menu menu.part.png true"]
     );
     for (l, n) in [("de", "home"), ("en", "home"), ("en", "menu")] {
         assert_eq!(fs::read(shot(&p.root, l, n)).unwrap()[1..4], *b"PNG");
@@ -233,7 +236,7 @@ fn a_failed_recapture_keeps_the_old_file() {
 fn only_limits_the_shots_and_rejects_unknown_names() {
     let p = product(true);
     run(&p, &[("en", "home"), ("en", "menu")], &["menu"], 20).unwrap();
-    assert_eq!(log_lines(&p), ["menu menu.png.part true"]);
+    assert_eq!(log_lines(&p), ["menu menu.part.png true"]);
     assert!(!shot(&p.root, "en", "home").exists());
     let err = run(&p, &[("en", "home")], &["nope"], 20).unwrap_err();
     assert!(err.to_string().contains("nope"), "{err}");
