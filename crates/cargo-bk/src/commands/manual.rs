@@ -9,6 +9,8 @@ use include_dir::{Dir, include_dir};
 use std::fs;
 use std::path::Path;
 
+pub mod capture;
+
 static MANUAL_TOOL: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../tools/manual");
 
 fn is_tool_file(name: &str) -> bool {

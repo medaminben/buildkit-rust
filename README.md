@@ -111,6 +111,7 @@ This installs `cargo-bk` and nothing else; the bootstrap installs the rest.
 | `version` | Prints the product version from git tags |
 | `package [--format inno\|appimage\|deb\|all]` | Builds the installers into `build/dist/` |
 | `manual [--check]` | Builds the user manual into `build/manual/`, or checks it |
+| `manual capture [--only <name>]... [--timeout <seconds>]` | Runs the product's capture command once per screenshot the manual references |
 | `doctor [--machine]` | Checks the machine and the product against what they need |
 | `check-pins` | Fails when the buildkit-rust version pins disagree |
 | `upgrade <version>` | Moves every pin to the running cargo-bk version |
