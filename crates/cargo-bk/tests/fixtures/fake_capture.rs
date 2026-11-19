@@ -37,8 +37,7 @@ fn main() {
             .unwrap();
         if building {
             writeln!(f, "BUILD").unwrap();
-        }
-        if !building {
+        } else {
             let name = std::path::Path::new(&capture)
                 .file_name()
                 .unwrap()

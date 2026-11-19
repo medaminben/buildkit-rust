@@ -7,11 +7,8 @@ fn main() -> eframe::Result {
     let cli = match cli::Cli::parse(args.iter().cloned()) {
         Ok(cli) => cli,
         Err(reason) => {
-            // A capture run reports every failure in one form; `cargo bk manual capture` reads it.
-            let capture_run = args.iter().any(|a| a.starts_with("--capture="));
-            if capture_run {
-                eprintln!("capture failed: {reason}");
-                std::process::exit(1);
+            if args.iter().any(|a| a.starts_with("--capture=")) {
+                fail_capture(&reason);
             }
             eprintln!("{reason}");
             std::process::exit(2);
@@ -46,10 +43,15 @@ fn main() -> eframe::Result {
     );
     if capturing {
         if let Err(reason) = capture::finish(window.map_err(|e| e.to_string()), &outcome) {
-            eprintln!("capture failed: {reason}");
-            std::process::exit(1);
+            fail_capture(&reason);
         }
         return Ok(());
     }
     window
+}
+
+/// `cargo bk manual capture` reads this line, so every capture failure uses it.
+fn fail_capture(reason: &str) -> ! {
+    eprintln!("capture failed: {reason}");
+    std::process::exit(1);
 }

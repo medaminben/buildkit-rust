@@ -57,10 +57,6 @@ fn capture_command(ws: &Workspace) -> Result<Vec<String>> {
     capture_words(ws, "command")?.ok_or_else(|| NoConfig(NO_COMMAND.to_string()).into())
 }
 
-fn build_command(ws: &Workspace) -> Result<Option<Vec<String>>> {
-    capture_words(ws, "build")
-}
-
 /// Runs the build command once, streaming its output, with no timeout.
 fn run_build(argv: &[String], cwd: &Path) -> Result<()> {
     let status = Command::new(&argv[0])
@@ -135,7 +131,7 @@ fn spawn(argv: &[String], cwd: &Path) -> Result<Child> {
         .with_context(|| format!("cannot run `{}`", argv[0]))
 }
 
-/// Captures one shot into `part`, then renames it to `dest`.
+/// Captures one shot into `part`.
 fn capture_one(
     command: &[String],
     cwd: &Path,
@@ -172,6 +168,34 @@ fn place(part: &Path, dest: &Path) -> Result<()> {
     fs::rename(part, dest).with_context(|| format!("cannot write {}", dest.display()))
 }
 
+fn shot_path(shots_dir: &Path, lang: &str, name: &str, ext: &str) -> PathBuf {
+    shots_dir.join(lang).join(format!("{name}.{ext}"))
+}
+
+/// Captures `name` once for the first language and copies it to the others.
+fn capture_shot(
+    command: &[String],
+    cwd: &Path,
+    shots_dir: &Path,
+    name: &str,
+    langs: &[String],
+    timeout: Duration,
+) -> Result<()> {
+    let first = &langs[0];
+    let target = shot_path(shots_dir, first, name, "png");
+    let part = shot_path(shots_dir, first, name, "part.png");
+    fs::create_dir_all(shots_dir.join(first))?;
+    capture_one(command, cwd, name, &part, timeout)?;
+    place(&part, &target)?;
+    for lang in &langs[1..] {
+        let part = shot_path(shots_dir, lang, name, "part.png");
+        fs::create_dir_all(shots_dir.join(lang))?;
+        fs::copy(&target, &part)?;
+        place(&part, &shot_path(shots_dir, lang, name, "png"))?;
+    }
+    Ok(())
+}
+
 /// Runs the capture command for each distinct shot name (or just `only`).
 ///
 /// # Errors
@@ -186,7 +210,7 @@ pub fn run(
     timeout: Duration,
 ) -> Result<()> {
     let command = capture_command(ws)?;
-    let build = build_command(ws)?;
+    let build = capture_words(ws, "build")?;
     let shots = list_shots(ws, r, os)?;
     if let Some(bad) = only.iter().find(|n| !shots.contains_key(*n)) {
         bail!("no shot named {bad} in the manual");
@@ -200,26 +224,12 @@ pub fn run(
         if !only.is_empty() && !only.contains(name) {
             continue;
         }
-        let target = |lang: &str| -> PathBuf { shots_dir.join(lang).join(format!("{name}.png")) };
-        let part =
-            |lang: &str| -> PathBuf { shots_dir.join(lang).join(format!("{name}.part.png")) };
-        let first = &langs[0];
-        let result = (|| -> Result<()> {
-            fs::create_dir_all(shots_dir.join(first))?;
-            capture_one(&command, &ws.root, name, &part(first), timeout)?;
-            place(&part(first), &target(first))?;
-            for lang in &langs[1..] {
-                fs::create_dir_all(shots_dir.join(lang))?;
-                fs::copy(target(first), part(lang))?;
-                place(&part(lang), &target(lang))?;
-            }
-            Ok(())
-        })();
+        let result = capture_shot(&command, &ws.root, &shots_dir, name, langs, timeout);
         match result {
             Ok(()) => println!("captured {name} ({})", langs.join(", ")),
             Err(e) => {
                 for lang in langs {
-                    let _ = fs::remove_file(part(lang));
+                    let _ = fs::remove_file(shot_path(&shots_dir, lang, name, "part.png"));
                 }
                 failures.push(format!("{name}: {e:#}"));
             }
