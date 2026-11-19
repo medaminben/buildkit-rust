@@ -10,7 +10,7 @@
 #     cancel-in-progress: true
 #   jobs:
 #     ci:
-#       uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v0.2.0
+#       uses: medaminben/buildkit-rust/.github/workflows/ci.yml@v0.3.0
 #       permissions:
 #         contents: read
 #       with:
